@@ -2,22 +2,26 @@ import os
 import uuid
 import urllib2
 from resourcelocator import ResourceLocator
-from kerberoshandler import KerberosHttpAuthenticated
+
 from suds.bindings import binding
 from suds.client import Client
 from suds.sax.element import Element
 from suds.sax.attribute import Attribute
-from suds.transport.http import HttpAuthenticated
+from suds.transport.https import HttpTransport
+from suds.transport.https import HttpAuthenticated
 from suds.transport.https import WindowsHttpAuthenticated
+
+from kerberoshandler import KerberosHttpAuthenticated
 
 class Session(object):
     """
     Factory object for building sessions and connection options
     """
 
-    def __init__(self, endpoint, flags, username, password):
-        transport = _build_transport(flags, username, password)
+    def __init__(self, endpoint, auth, username, password):
+        transport = Session._build_transport(endpoint, auth, username, password)
         wsdl_file = os.path.join(os.path.dirname(__file__), 'assets', 'winrm.wsdl')
+        self.endpoint = endpoint
         self.To = Element('To', ns=Session.AddressingNamespace).setText(endpoint)
         self.client = Client("file://%s" % wsdl_file, location=endpoint, transport=transport)
         self.client.set_options(headers=Session.SoapContentType)
@@ -34,25 +38,18 @@ class Session(object):
         return self.client.service.Get()
 
     @staticmethod
-    def _build_transport(flags, username, password, realm=None):
-        #if realm is None:
-            # extract realm from username
-
-        password_mgr = urllib2.HTTPPasswordMgrWithDefaultRealm()
-        password_mgr.add_password(realm, "", username, password)
-
-        # Kerberos GSS-API (SPNEGO) Authentication
-        if(1 == 1):
+    def _build_transport(endpoint, auth, username, password):
+        # Provide credentials to the transport
+        if auth == 'krb5':
             transport = KerberosHttpAuthenticated()
-
-        # Windows NTLM Authentication
-        if(3 ==3 ):
+        elif auth == 'ntlm':
             transport = WindowsHttpAuthenticated()
-
-        # Windows Basic Authentication
-        # if(2 == 2):
+        elif auth == 'basic':
             transport = HttpAuthenticated()
 
+        # Provide credentials to the transport
+        password_mgr = urllib2.HTTPPasswordMgrWithDefaultRealm()
+        password_mgr.add_password(None, endpoint, username, password)
         transport.pm = password_mgr
         return transport
 
@@ -86,8 +83,8 @@ class Session(object):
 
     def _build_headers(self, resource, action):
         # Each request should have a unique Message ID
-        selectors = self._build_selectors(resource.selectors)
-        options = self._build_options(resource.options)
+        selectors = Session._build_selectors(resource.selectors)
+        options = Session._build_options(resource.options)
         resource = Element('ResourceURI', ns=Session.WSManNamespace).setText(resource.url)
 
         message_id = Element('MessageID', ns=Session.AddressingNamespace)

@@ -11,7 +11,7 @@ class WinRmClient(object):
         Returns a WinRM Session
         """
 
-        session = Session('https://bp1lcsap019:5986/wsman', 'ian.clegg@uk.bp.com', 'password')
+        session = Session('http://httpbin.org/get', 'user@domain', 'password')
         resource = ResourceLocator('http://schemas.microsoft.com/wbem/wsman/1/wmi/root/cimv2/Win32_logicaldisk')
         resource.add_selector('DeviceId', 'c:')
 
