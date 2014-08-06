@@ -8,17 +8,17 @@ python:
   - pypy
 install:
   # ensure build dependencies
-  - pip install -r build_requirements.txt --use-mirrors
+  - pip install -r build_requirements.txt
 
   # ensure documentation dependencies
   #- pip install -r docs/requirements.txt --use-mirrors
   
   # ensure package dependencies
-  - pip install -r requirements.txt --use-mirrors --upgrade
+  - pip install -r requirements.txt
 script:
   #TODO Run Unit Tests
   #py.test -v --pep8 winrm --cov winrm --cov-report term-missing winrmlib/tests/
-  #- py.test -v --cov winrm --cov-report term-missing winrmlib/tests/
+  - py.test -v --cov winrm --cov-report term-missing winrmlib/tests/
 after_success:
   - coveralls
   # Build a Source Distribution and Egg
