@@ -11,7 +11,7 @@ install:
 script:
 - py.test -v --cov winrm --cov-report term-missing winrmlib/tests/
 after_success:
-- pushd
+- pushd .
 - coveralls
 - pwd && cd src
 - python setup.py sdist
