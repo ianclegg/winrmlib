@@ -1,6 +1,2 @@
 suds-jurko
 kerberos
-pytest
-pytest-cov
-pytest-pep8
-mock

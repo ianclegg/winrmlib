@@ -21,16 +21,16 @@ import kerberos
 from urllib2 import BaseHandler
 from urllib2 import HTTPPasswordMgr
 
-def getLogger():
-    log = logging.getLogger("http_kerberos_auth_handler")
-    handler = logging.StreamHandler()
-    formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
-    handler.setFormatter(formatter)
-    log.addHandler(handler)
-    return log
+#def getLogger():
+#    log = logging.getLogger("http_kerberos_auth_handler")
+#    handler = logging.StreamHandler()
+#    formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
+#    handler.setFormatter(formatter)
+#    log.addHandler(handler)
+#   return log
 
-log = getLogger()
-log.setLevel(logging.DEBUG)
+#log = getLogger()
+#log.setLevel(logging.DEBUG)
 
 
 class BaseKerberosHandler(BaseHandler):

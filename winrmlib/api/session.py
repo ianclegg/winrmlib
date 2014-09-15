@@ -7,11 +7,16 @@ from suds.bindings import binding
 from suds.client import Client
 from suds.sax.element import Element
 from suds.sax.attribute import Attribute
-from suds.transport.https import HttpTransport
+#from suds.plugin.MessagePlugin import MessagePlugin
 from suds.transport.https import HttpAuthenticated
 from suds.transport.https import WindowsHttpAuthenticated
 
-from kerberoshandler import KerberosHttpAuthenticated
+#from kerberoshandler import KerberosHttpAuthenticated
+
+# The suds generated
+#class RemoveEmptyElementsPlugin(MessagePlugin):
+#    def marshalled(self, context):
+#        context.envelope = context.envelope.prune()
 
 class Session(object):
     """
@@ -23,7 +28,9 @@ class Session(object):
         wsdl_file = os.path.join(os.path.dirname(__file__), 'assets', 'winrm.wsdl')
         self.endpoint = endpoint
         self.To = Element('To', ns=Session.AddressingNamespace).setText(endpoint)
-        self.client = Client("file://%s" % wsdl_file, location=endpoint, transport=transport)
+        self.client = Client("file:///%s" % wsdl_file.replace('\\', '/'), location=endpoint, transport=transport,
+                             prettyxml=True)
+        # plugins=[RemoveEmptyElementsPlugin()])
         self.client.set_options(headers=Session.SoapContentType)
 
     def get(self, resource):
@@ -34,8 +41,58 @@ class Session(object):
             resource = ResourceLocator(resource)
 
         headers = self._build_headers(resource, Session.GetAction)
-        self.client.set_options(soapheaders=headers)
+        self.client.set_options(tsoapheaders=headers)
         return self.client.service.Get()
+
+    def put(self, resource, obj):
+        """
+        resource can be a URL or a ResourceLocator
+        """
+        pass
+
+    def delete(self, resource):
+        """
+        resource can be a URL or a ResourceLocator
+        """
+        if isinstance(resource, str):
+            resource = ResourceLocator(resource)
+
+        headers = self._build_headers(resource, Session.DeleteAction)
+        self.client.set_options(soapheaders=headers)
+        return self.client.service.Delete()
+
+    def create(self, resource, obj):
+        """
+        resource can be a URL or a ResourceLocator
+        """
+        if isinstance(resource, str):
+            resource = ResourceLocator(resource)
+
+        headers = self._build_headers(resource, Session.CreateAction)
+        self.client.set_options(soapheaders=headers)
+        return self.client.service.Create(obj)
+
+    def command(self, resource, obj):
+        """
+        resource can be a URL or a ResourceLocator
+        """
+        if isinstance(resource, str):
+            resource = ResourceLocator(resource)
+
+        headers = self._build_headers(resource, Session.CommandAction)
+        self.client.set_options(soapheaders=headers)
+        return self.client.service.Command(obj)
+
+    def recieve(self, resource, obj):
+        """
+        resource can be a URL or a ResourceLocator
+        """
+        if isinstance(resource, str):
+            resource = ResourceLocator(resource)
+
+        headers = self._build_headers(resource, Session.ReceiveAction)
+        self.client.set_options(soapheaders=headers)
+        return self.client.service.Command(obj)
 
     @staticmethod
     def _build_transport(endpoint, auth, username, password):
@@ -71,9 +128,9 @@ class Session(object):
     @staticmethod
     def _build_options(options):
         option_set = Element('OptionSet', ns=Session.WSManNamespace)
-        for name, (value, must_comply) in options.iterkeys():
+        for name, (value, must_comply) in options.iteritems():
             must_comply = bool(must_comply)
-
+            # TODO add mustcomply attribute to element
             option = Element('Option', ns=Session.WSManNamespace).setText(value)
             option_name_attribute = Attribute("Name", name)
             option.attributes.append(option_name_attribute)
@@ -104,7 +161,6 @@ binding.envns=('SOAP-ENV', 'http://www.w3.org/2003/05/soap-envelope')
 # Static members that can be safely shared with all instances
 Session.WSManNamespace = ('w', 'http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd')
 Session.MaxEnvelope = Element('MaxEnvelopeSize', ns=Session.WSManNamespace).setText('153600')
-Session.GetAction = 'http://schemas.xmlsoap.org/ws/2004/09/transfer/Get'
 Session.Locale = Element('Locale').attributes.append(Attribute("xml:lang", "en-US"))
 Session.AddressingNamespace = ('a', 'http://schemas.xmlsoap.org/ws/2004/08/addressing')
 Session.Action = Element('Action', ns=Session.AddressingNamespace)
@@ -114,3 +170,10 @@ Session.Address = Element('Address', ns=Session.AddressingNamespace)\
 Session.ReplyTo.append(Session.Address)
 Session.SoapContentType = {'Content-Type': 'application/soap+xml; charset=utf-8'}
 
+# WSMan SOAP Actions
+Session.GetAction = 'http://schemas.xmlsoap.org/ws/2004/09/transfer/Get'
+Session.PutAction = 'http://schemas.xmlsoap.org/ws/2004/09/transfer/Put'
+Session.DeleteAction = 'http://schemas.xmlsoap.org/ws/2004/09/transfer/Delete'
+Session.CreateAction = 'http://schemas.xmlsoap.org/ws/2004/09/transfer/Create'
+Session.CommandAction = 'http://schemas.microsoft.com/wbem/wsman/1/windows/shell/Command'
+Session.ReceiveAction = 'http://schemas.microsoft.com/wbem/wsman/1/windows/shell/Receive'
