@@ -1,2 +1,2 @@
 suds-jurko
-kerberos
+pykerberos
