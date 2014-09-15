@@ -10,6 +10,17 @@ install:
 - pip install -r requirements.txt
 script:
 - py.test -v --cov winrm --cov-report term-missing winrmlib/tests/
+after_success:
+- pwd
+- coveralls
+- pwd && cd src
+- python setup.py sdist
+- cd ..
+- pwd && cd src/dist
+- pip install winrmlib-*.tar.gz
+- echo "y" | pip uninstall winrmlib
+- cd ../..
+- pwd
 deploy:
   provider: pypi
   user: ianclegg
