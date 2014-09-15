@@ -23,7 +23,6 @@ after_success:
 deploy:
   provider: pypi
   user: iclegg
-  server: https://testpypi.python.org/pypi
   distributions: sdist
   password:
     secure: Y3l6ZkHJw796xJJoMhS4iroI26ibwx138rJuXDEt2W7lM21suECwDkoHNn35up/iaHKCPlTu076KTS+9LRfty0MQYWsmwyMc7oXL82QvACLBd7WgYlxt66OsFT4y6GKKWSxt0AKGBQEcSlAtCgM5rt0bxv8Dp3+hJYZUQ55/Sro=
