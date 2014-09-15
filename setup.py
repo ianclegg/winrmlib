@@ -89,7 +89,6 @@ setup(
     packages=['winrmlib', 'winrmlib.api'],
     package_data={'winrmlib.api': ['assets/xsd/*.xsd', 'assets/*.wsdl']},
     install_requires=['xmltodict', 'isodate'],
-    cmdclass={'bootstrap_env': BootstrapEnvironmentCommand},
     classifiers=[
         'Development Status :: 3 - Alpha',
         'Environment :: Console',
