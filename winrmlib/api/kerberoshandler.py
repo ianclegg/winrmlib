@@ -137,6 +137,11 @@ class BaseKerberosHandler(BaseHandler):
         else:
             self.retried = 0
 
+    def https_request(self, req):
+        neg_hdr = self.generate_request_header(req, None, None)
+        req.add_unredirected_header(self.authz_header, neg_hdr)
+        return req
+
     def retry_http_kerberos_auth(self, req, headers, neg_value):
         try:
             neg_hdr = self.generate_request_header(req, headers, neg_value)
@@ -215,7 +220,7 @@ class KerberosHttpAuthenticated(suds.transport.https.HttpAuthenticated):
         self.service = kwargs.get('service', None)
         self.keytab = kwargs.get('keytab',None)
         suds.transport.https.HttpAuthenticated.__init__(self, **kwargs)
-  
+
     def u2handlers(self):
         handlers = suds.transport.http.HttpTransport.u2handlers(self)
         handlers.append(HTTPKerberosAuthHandler(self.service, self.keytab, self.pm))

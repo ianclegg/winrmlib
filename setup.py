@@ -81,7 +81,7 @@ setup(
     version=__version__,
     description='Python library for Windows Remote Management',
     long_description=long_description,
-    keywords='winrm ws-man devops ws-management'.split(' '),
+    keywords='winrm winrw ws-man ws-management powershell'.split(' '),
     author='Ian Clegg',
     author_email='ian.clegg@sourcewarp.com',
     url='http://github.com/iclegg/winrmlib/',

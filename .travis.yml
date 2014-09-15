@@ -1,32 +1,28 @@
-# http://travis-ci.org/#!/ianclegg/winrmlib
 language: python
 python:
-  - 2.6
-  - 2.7
-  - 3.2
-  - 3.3
-  - pypy
+- 2.6
+- 2.7
+- 3.2
+- 3.3
+- pypy
 install:
-  # ensure build dependencies
-  - pip install -r build_requirements.txt
-
-  # ensure documentation dependencies
-  #- pip install -r docs/requirements.txt --use-mirrors
-  
-  # ensure package dependencies
-  - pip install -r requirements.txt
+- pip install -r build_requirements.txt
+- pip install -r requirements.txt
 script:
-  #TODO Run Unit Tests
-  #py.test -v --pep8 winrm --cov winrm --cov-report term-missing winrmlib/tests/
-  - py.test -v --cov winrm --cov-report term-missing winrmlib/tests/
+- py.test -v --cov winrm --cov-report term-missing winrmlib/tests/
 after_success:
-  - coveralls
-  # Build a Source Distribution
-  - pwd && cd src
-  - python setup.py sdist
-  - cd ..
-  # Ensure the the distributions install and uninstall
-  - pwd && cd src/dist
-  - pip install winrmlib-*.tar.gz
-  - echo "y" | pip uninstall winrmlib
-  - cd ../..
+- coveralls
+- pwd && cd src
+- python setup.py sdist
+- cd ..
+- pwd && cd src/dist
+- pip install winrmlib-*.tar.gz
+- echo "y" | pip uninstall winrmlib
+- cd ../..
+deploy:
+  provider: pypi
+  user: ianclegg
+  password:
+    secure: DeGDOeaXF9cX6WA8E6Vj93bMG3s88kbfmnWO/SYVnMhZS3rLn5vaeAVFEcPCyFoqivApj7q+c4ehoZvWafgAN4Gt5s96PhALIRwciUWD+haXUEEQcXbeQ1ihCqfBKyt5N77B8wDhmcqdAkkIIOWcuDW5s/xmUM5u201nT8qSwAE=
+  on:
+    tags: true
