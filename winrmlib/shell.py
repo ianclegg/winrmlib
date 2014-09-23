@@ -1,9 +1,10 @@
 import base64
+import logging
 from api.resourcelocator import ResourceLocator
 from api.session import Session
 from suds.sax.element import Attribute
 from suds.sax.element import Element
-
+from suds import WebFault
 
 class CommandShell(object):
 
@@ -57,10 +58,11 @@ class CommandShell(object):
         iclegg: blocking i/o operations are slow, doesnt Python have a moden 'async' mechanism
         rather than replying on 80's style callbacks?
         """
+        logging.info('running command: ' + command)
         resource = ResourceLocator(CommandShell.ShellResource)
         resource.add_selector('ShellId', self.shellId)
-        resource.add_option('WINRS_SKIP_CMD_SHELL', ['TRUE', 'FALSE'][bool(skip_cmd_shell)], True)
-        resource.add_option('WINRS_CONSOLEMODE_STDIN', ['TRUE', 'FALSE'][bool(console_mode_stdin)], True)
+        resource.add_option('WINRS_SKIP_CMD_SHELL', ['FALSE', 'TRUE'][bool(skip_cmd_shell)], True)
+        resource.add_option('WINRS_CONSOLEMODE_STDIN', ['FALSE', 'TRUE'][bool(console_mode_stdin)], True)
 
         commandline = Element('CommandLine', ns=CommandShell.ShellNamespace)
         commandline.append(Element('Command', ns=CommandShell.ShellNamespace).setText(command))
@@ -69,9 +71,11 @@ class CommandShell(object):
             commandline.append(Element('Arguments', ns=CommandShell.ShellNamespace).setText(argument))
 
         response = self.session.command(resource, commandline)
+        logging.info('receive command: ' + response.CommandId)
         return response.CommandId
 
     def receive(self, command_id, streams=('stdout', 'stderr')):
+        logging.info('receive command: ' + command_id)
         (session_streams, exit_code, done) = self._receive_once(command_id, streams)
         complete_streams = session_streams
         while not done:
@@ -85,26 +89,32 @@ class CommandShell(object):
             return complete_streams, exit_code
 
     def _receive_once(self, command_id, streams=('stdout', 'stderr')):
+        logging.info('receive command: ' + command_id)
         resource = ResourceLocator(CommandShell.ShellResource)
         resource.add_selector('ShellId', self.shellId)
         stream_element = Element('DesiredStream', ns=CommandShell.ShellNamespace).setText(" ".join(streams))
         stream_element.attributes.append(Attribute("CommandId", command_id))
         receive = Element('Receive', ns=CommandShell.ShellNamespace)
         receive.append(stream_element)
-        response = self.session.recieve(resource, receive)
 
+        response = self.session.recieve(resource, receive)
         decoded_streams = {}
         for stream in streams:
             decoded_streams[stream] = ''
 
-        for stream in response.Stream:
+        if isinstance(response.Stream, list):
+            responseStreams = response.Stream
+        else:
+            responseStreams = [response.Stream]
+
+        for stream in responseStreams:
             if stream._CommandId == command_id and hasattr(stream, 'value'):
                 decoded_streams[stream._Name] += base64.b64decode(stream.value)
 
         exit_code = None
         done = response.CommandState._State == CommandShell.StateDone
         if done:
-            exit_code = response.CommandState.ExitCode
+            exit_code = int(response.CommandState.ExitCode)
 
         return decoded_streams, exit_code, done
 

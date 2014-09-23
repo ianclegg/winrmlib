@@ -1,22 +1,17 @@
 import os
 import uuid
 import urllib2
+
 from resourcelocator import ResourceLocator
 
 from suds.bindings import binding
 from suds.client import Client
 from suds.sax.element import Element
 from suds.sax.attribute import Attribute
-#from suds.plugin.MessagePlugin import MessagePlugin
 from suds.transport.https import HttpAuthenticated
 from suds.transport.https import WindowsHttpAuthenticated
 
-#from kerberoshandler import KerberosHttpAuthenticated
-
-# The suds generated
-#class RemoveEmptyElementsPlugin(MessagePlugin):
-#    def marshalled(self, context):
-#        context.envelope = context.envelope.prune()
+from kerberoshandler import KerberosHttpAuthenticated
 
 class Session(object):
     """
@@ -28,7 +23,7 @@ class Session(object):
         wsdl_file = os.path.join(os.path.dirname(__file__), 'assets', 'winrm.wsdl')
         self.endpoint = endpoint
         self.To = Element('To', ns=Session.AddressingNamespace).setText(endpoint)
-        self.client = Client("file:///%s" % wsdl_file.replace('\\', '/'), location=endpoint, transport=transport,
+        self.client = Client("file://%s" % wsdl_file.replace('\\', '/'), location=endpoint, transport=transport,
                              prettyxml=True)
         # plugins=[RemoveEmptyElementsPlugin()])
         self.client.set_options(headers=Session.SoapContentType)

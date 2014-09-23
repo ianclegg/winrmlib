@@ -21,16 +21,16 @@ import kerberos
 from urllib2 import BaseHandler
 from urllib2 import HTTPPasswordMgr
 
-#def getLogger():
-#    log = logging.getLogger("http_kerberos_auth_handler")
-#    handler = logging.StreamHandler()
-#    formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
-#    handler.setFormatter(formatter)
-#    log.addHandler(handler)
-#   return log
+def getLogger():
+    log = logging.getLogger("http_kerberos_auth_handler")
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
+    handler.setFormatter(formatter)
+    log.addHandler(handler)
+    return log
 
-#log = getLogger()
-#log.setLevel(logging.DEBUG)
+log = getLogger()
+log.setLevel(logging.ERROR)
 
 
 class BaseKerberosHandler(BaseHandler):
@@ -42,7 +42,7 @@ class BaseKerberosHandler(BaseHandler):
         """checks for "Negotiate" in proper auth header
         """
         authreq = headers.get(self.auth_header, None)
-        log.debug('authreq = {}'.format(authreq))
+        log.debug('authreq = {0}'.format(authreq))
 
         if authreq:
             rx = re.compile(r'(?:.*,)*\s*Negotiate\s*([^,]*),?', re.I)
@@ -83,11 +83,12 @@ class BaseKerberosHandler(BaseHandler):
         # TODO: Enusre a TGT for the user principal exists, if not, use the password
         # TODO: to aquire one.
 
+
         # An empty username will attempt the current user
         log.debug("Intialising Kerberos Context, service: %s UPN: %s" % (self.service, user))
-        result, self.context = kerberos.authGSSClientInit(self.service, user)
+        result, self.context = kerberos.authGSSClientInit(self.service, user, password=password)
 
-        if result < 1:
+        if result < 0:
             log.warning("authGSSClientInit returned result %d" % result)
             return None
 
@@ -138,7 +139,7 @@ class BaseKerberosHandler(BaseHandler):
             self.retried = 0
 
     def https_request(self, req):
-        neg_hdr = self.generate_request_header(req, None, None)
+        neg_hdr = self.generate_request_header(req, None, '')
         req.add_unredirected_header(self.authz_header, neg_hdr)
         return req
 
