@@ -9,7 +9,7 @@ install:
 - pip install -r build_requirements.txt
 - pip install -r requirements.txt
 script:
-- py.test -v --cov winrm --cov-report term-missing winrmlib/tests/
+- py.test -v --cov winrmlib --cov-report term-missing winrmlib/tests/
 after_success:
 - pushd .
 - coveralls
@@ -25,5 +25,4 @@ deploy:
   user: iclegg
   distributions: sdist
   password:
-    secure: mAVoubX57aExoukVpjQ+JZpVdXEBw78x0Xb6GiLh5TJNLZLjCFB1XwzXawADhaZiodD/AYl3EDAnVAYWh1yfJLst5cCgcUHqhvSTuuHQRoMoqrQPYBHDLO+erAqGFhX0GcvkAELWZueTXqScxq7SggUVa10T5KiMH1qVEYhukoE=
-	
+    secure: aXmoJxoFmNgMmxATYa86FOkNeJ9TpFD3G5KwE93Qr0fnwcD1ny8XDI4C8nzCgYxDw6j7hEdKqQ+sHnWi/dCoc4bhffzEoziZTTh7qipkPXsjq+lmlR79H+KHDwQtsbrV6N8MdggGsYZYk3pcQ9+cYXqx470D7m8kmaetRxYTGoo=

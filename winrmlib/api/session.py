@@ -1,168 +1,184 @@
-import os
-import uuid
-import urllib2
+# (c) 2015, Ian Clegg <ian.clegg@sourcewarp.com>
+#
+# winrmlib is licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+__author__ = 'ian.clegg@sourcewarp.com'
 
+import uuid
+from collections import OrderedDict
+from xml.etree import ElementTree
+from service import Service
 from resourcelocator import ResourceLocator
 
-from suds.bindings import binding
-from suds.client import Client
-from suds.sax.element import Element
-from suds.sax.attribute import Attribute
-from suds.transport.https import HttpAuthenticated
-from suds.transport.https import WindowsHttpAuthenticated
-
-from kerberoshandler import KerberosHttpAuthenticated
 
 class Session(object):
     """
     Factory object for building sessions and connection options
     """
 
-    def __init__(self, endpoint, auth, username, password):
-        transport = Session._build_transport(endpoint, auth, username, password)
-        wsdl_file = os.path.join(os.path.dirname(__file__), 'assets', 'winrm.wsdl')
+    def __init__(self, endpoint, auth, username, password, **kwargs):
+        # transport = Session._build_transport(endpoint, auth, username, password)
+
+        # Store the endpoint and the service we will use to invoke it
         self.endpoint = endpoint
-        self.To = Element('To', ns=Session.AddressingNamespace).setText(endpoint)
-        self.client = Client("file://%s" % wsdl_file.replace('\\', '/'), location=endpoint, transport=transport,
-                             prettyxml=True)
-        # plugins=[RemoveEmptyElementsPlugin()])
-        self.client.set_options(headers=Session.SoapContentType)
+        # False == No CredSSP
+        self.service = Service(endpoint, auth, username, password, True)
 
-    def get(self, resource):
+        # The user can set override some defaults for the Session, they can also be overridden on each request
+        self.max_envelope = self._build_max_envelope(kwargs.get('max_envelope_size', Session.MaxEnvelopeSize))
+        self.locale = self._build_locale(kwargs.get('locale', Session.Locale))
+
+        self.To = ElementTree.Element(Session.AddressingNamespace + 'To', text=endpoint)
+        # The operation timeout header overrides the timeout set on the server. Some users may prefer to
+        # use the servers default timeout, so this header will only be included if the user explicitly sets
+        # an operation timeout.
+        if 'operation_timeout' in kwargs:
+            self.default_operation_timeout = self._build_operation_timeout(kwargs.get('operation_timeout'))
+        else:
+            self.default_operation_timeout = None
+
+    def get(self, resource, operation_timeout=None, max_envelope_size=None, locale=None):
         """
         resource can be a URL or a ResourceLocator
         """
         if isinstance(resource, str):
             resource = ResourceLocator(resource)
 
-        headers = self._build_headers(resource, Session.GetAction)
-        self.client.set_options(tsoapheaders=headers)
-        return self.client.service.Get()
+        headers = self._build_headers(resource, Session.GetAction, operation_timeout, max_envelope_size, locale)
+        self.service.invoke.set_options(tsoapheaders=headers)
+        return self.service.invoke
 
-    def put(self, resource, obj):
+    def put(self, resource, obj,
+            operation_timeout=None, max_envelope_size=None, locale=None):
         """
         resource can be a URL or a ResourceLocator
         """
-        pass
+        headers = None
+        return self.service.invoke(headers, obj)
 
-    def delete(self, resource):
-        """
-        resource can be a URL or a ResourceLocator
-        """
-        if isinstance(resource, str):
-            resource = ResourceLocator(resource)
-
-        headers = self._build_headers(resource, Session.DeleteAction)
-        self.client.set_options(soapheaders=headers)
-        return self.client.service.Delete()
-
-    def create(self, resource, obj):
+    def delete(self, resource, operation_timeout=None, max_envelope_size=None, locale=None):
         """
         resource can be a URL or a ResourceLocator
         """
         if isinstance(resource, str):
             resource = ResourceLocator(resource)
 
-        headers = self._build_headers(resource, Session.CreateAction)
-        self.client.set_options(soapheaders=headers)
-        return self.client.service.Create(obj)
+        headers = self._build_headers(resource, Session.DeleteAction,
+                                      operation_timeout, max_envelope_size, locale)
+        return self.service.invoke(headers, None)
 
-    def command(self, resource, obj):
+    def create(self, resource, obj,
+               operation_timeout=None, max_envelope_size=None, locale=None):
         """
         resource can be a URL or a ResourceLocator
         """
         if isinstance(resource, str):
             resource = ResourceLocator(resource)
 
-        headers = self._build_headers(resource, Session.CommandAction)
-        self.client.set_options(soapheaders=headers)
-        return self.client.service.Command(obj)
+        headers = self._build_headers(resource, Session.CreateAction,
+                                      operation_timeout, max_envelope_size, locale)
+        return self.service.invoke(headers, obj)
 
-    def recieve(self, resource, obj):
+    def command(self, resource, obj,
+                operation_timeout=None, max_envelope_size=None, locale=None):
         """
         resource can be a URL or a ResourceLocator
         """
         if isinstance(resource, str):
             resource = ResourceLocator(resource)
 
-        headers = self._build_headers(resource, Session.ReceiveAction)
-        self.client.set_options(soapheaders=headers)
-        return self.client.service.Command(obj)
+        headers = self._build_headers(resource, Session.CommandAction,
+                                      operation_timeout, max_envelope_size, locale)
+        return self.service.invoke(headers, obj)
 
-    @staticmethod
-    def _build_transport(endpoint, auth, username, password):
-        # Provide credentials to the transport
-        if auth == 'krb5':
-            transport = KerberosHttpAuthenticated()
-        elif auth == 'ntlm':
-            transport = WindowsHttpAuthenticated()
-        elif auth == 'basic':
-            transport = HttpAuthenticated()
+    def recieve(self, resource, obj,
+                operation_timeout=None, max_envelope_size=None, locale=None):
+        """
+        resource can be a URL or a ResourceLocator
+        """
+        if isinstance(resource, str):
+            resource = ResourceLocator(resource)
 
-        # Provide credentials to the transport
-        password_mgr = urllib2.HTTPPasswordMgrWithDefaultRealm()
-        password_mgr.add_password(None, endpoint, username, password)
-        transport.pm = password_mgr
-        return transport
+        headers = self._build_headers(resource, Session.ReceiveAction,
+                                      operation_timeout, max_envelope_size, locale)
+        return self.service.invoke(headers, obj)
 
     @staticmethod
     def _build_selectors(selectors):
         # Build the WSMan SelectorSet Element from the selector dictionary
-        selector_set = Element('SelectorSet', ns=Session.WSManNamespace)
+        selector_set = []
         for selector_name in selectors.iterkeys():
             selector_value = selectors[selector_name]
-
-            selector = Element('Selector', ns=Session.WSManNamespace).setText(selector_value)
-            selector_name_attribute = Attribute("Name", selector_name)
-            selector.attributes.append(selector_name_attribute)
-
-            # Add the selector to the SelectorSet
-            selector_set.append(selector)
-        return selector_set
+            selector_set.append({'#text': str(selector_value), '@Name': selector_name})
+        return {'w:SelectorSet': {'w:Selector': selector_set}}
 
     @staticmethod
+    # TODO add mustcomply attribute to element
     def _build_options(options):
-        option_set = Element('OptionSet', ns=Session.WSManNamespace)
+        option_set = []
         for name, (value, must_comply) in options.iteritems():
             must_comply = bool(must_comply)
-            # TODO add mustcomply attribute to element
-            option = Element('Option', ns=Session.WSManNamespace).setText(value)
-            option_name_attribute = Attribute("Name", name)
-            option.attributes.append(option_name_attribute)
+            option_set.append({'#text': str(value), '@Name': name})
+        return {'w:OptionSet': {'w:Option': option_set}}
 
-            option_set.append(option)
-        return option_set
+    def _build_operation_timeout(self, operation_timeout):
+        if operation_timeout is None:
+            return self.default_operation_timeout
+        else:
+            return {'w:OperationTimeout': 'PT{0}S'.format(operation_timeout)}
 
-    def _build_headers(self, resource, action):
-        # Each request should have a unique Message ID
-        selectors = Session._build_selectors(resource.selectors)
-        options = Session._build_options(resource.options)
-        resource = Element('ResourceURI', ns=Session.WSManNamespace).setText(resource.url)
+    def _build_max_envelope(self, max_envelope_size):
+        if max_envelope_size is None:
+            return self.max_envelope
+        else:
+            return {'w:MaxEnvelopeSize': '{0}'.format(max_envelope_size)}
 
-        message_id = Element('MessageID', ns=Session.AddressingNamespace)
-        message_id.setText(format(uuid.uuid4()))
-        action_id = Element('Action', ns=Session.AddressingNamespace)
-        action_id.setText(action)
+    def _build_locale(self, locale):
+        if locale is None:
+            return self.locale
+        else:
+            return {'Locale': {"@xml:lang": "en-US"}}
 
-        return [self.To, Session.ReplyTo,
-                message_id, action_id, resource,
-                selectors, options,
-                Session.Locale, Session.MaxEnvelope]
+    def _build_headers(self, resource, action, operation_timeout, max_envelope_size, locale):
+        headers = OrderedDict([
+            ('a:To', self.endpoint),
+            ('a:ReplyTo', Session.Address),
+            ('w:ResourceURI', resource.url),
+            ('a:MessageID', format(uuid.uuid4())),
+            ('a:Action', action)]
+        )
+        # TODO: Implement support for Microsoft XPRESS compression
+        # https://social.msdn.microsoft.com/Forums/en-US/501e4f29-edfc-4240-af3b-344264060b99/
+        # wsman-xpress-remote-shell-compression?forum=os_windowsprotocols
+        #headers.update({'rsp:CompressionType': {'@soap:mustUnderstand': 'true', '#text': 'xpress'}})
 
-# There does not appear to be a better alternative to getting a SOAP 1.2 header
-# This is a global solution to a local problem, and may cause issues with other suds users
-binding.envns=('SOAP-ENV', 'http://www.w3.org/2003/05/soap-envelope')
+        headers.update(self._build_selectors(resource.selectors))
+        headers.update(self._build_options(resource.options))
+        headers.update(self._build_max_envelope(max_envelope_size))
+        headers.update(self._build_locale(locale))
+        return headers
 
+Session.MaxEnvelopeSize = 153600
+Session.Locale = 'en-US'
+
+Session.Address = {'a:Address': {
+    '@mustUnderstand': 'true',
+    '#text': 'http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous'
+}}
 # Static members that can be safely shared with all instances
-Session.WSManNamespace = ('w', 'http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd')
-Session.MaxEnvelope = Element('MaxEnvelopeSize', ns=Session.WSManNamespace).setText('153600')
-Session.Locale = Element('Locale').attributes.append(Attribute("xml:lang", "en-US"))
-Session.AddressingNamespace = ('a', 'http://schemas.xmlsoap.org/ws/2004/08/addressing')
-Session.Action = Element('Action', ns=Session.AddressingNamespace)
-Session.ReplyTo = Element('ReplyTo', ns=Session.AddressingNamespace)
-Session.Address = Element('Address', ns=Session.AddressingNamespace)\
-    .setText('http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous')
-Session.ReplyTo.append(Session.Address)
+Session.WSManNamespace = '{http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd}'
+Session.AddressingNamespace = '{http://schemas.xmlsoap.org/ws/2004/08/addressing}'
+Session.Action = ElementTree.Element(Session.AddressingNamespace + 'Action')
+
 Session.SoapContentType = {'Content-Type': 'application/soap+xml; charset=utf-8'}
 
 # WSMan SOAP Actions
@@ -172,3 +188,11 @@ Session.DeleteAction = 'http://schemas.xmlsoap.org/ws/2004/09/transfer/Delete'
 Session.CreateAction = 'http://schemas.xmlsoap.org/ws/2004/09/transfer/Create'
 Session.CommandAction = 'http://schemas.microsoft.com/wbem/wsman/1/windows/shell/Command'
 Session.ReceiveAction = 'http://schemas.microsoft.com/wbem/wsman/1/windows/shell/Receive'
+
+# Register Namespaces with ElementTree
+ElementTree.register_namespace("s", 'http://www.w3.org/2003/05/soap-envelope')
+ElementTree.register_namespace("w", 'http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd')
+ElementTree.register_namespace("a", 'http://schemas.xmlsoap.org/ws/2004/08/addressing')
+
+
+

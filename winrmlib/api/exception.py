@@ -13,25 +13,21 @@
 # limitations under the License.
 __author__ = 'ian.clegg@sourcewarp.com'
 
-class ResourceLocator(object):
+class WSManException(Exception):
     """
-    Resource Locator
-    TO DO, constructor should accept a dictionary of options and a dictionary of list for selectors
+    Exception raised by failures in SSH2 protocol negotiation or logic errors.
     """
+    pass
 
-    def __init__(self, url):
-        self.url = url
-        self.options = {}
-        self.selectors = {}
+class AuthenticationException(Exception):
+    """
+    Exception raised by failures in SSH2 protocol negotiation or logic errors.
+    """
+    pass
 
-    def add_option(self, name, value, must_comply):
-        self.options[name] = [value, must_comply]
 
-    def clear_options(self):
-        self.options = {}
-
-    def add_selector(self, name, value):
-        self.selectors[name] = value
-
-    def clear_selectors(self):
-        self.selectors = {}
+class FaultException(Exception):
+    """
+    Exception raised by failures in SSH2 protocol negotiation or logic errors.
+    """
+    pass

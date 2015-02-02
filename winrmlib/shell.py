@@ -1,10 +1,28 @@
+# (c) 2015, Ian Clegg <ian.clegg@sourcewarp.com>
+#
+# winrmlib is licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+__author__ = 'ian.clegg@sourcewarp.com'
+
 import base64
 import logging
+
+from collections import OrderedDict
 from api.resourcelocator import ResourceLocator
 from api.session import Session
-from suds.sax.element import Attribute
-from suds.sax.element import Element
-from suds import WebFault
+
+# compression suport still in devel
+# import api.compression
+
 
 class CommandShell(object):
 
@@ -22,7 +40,8 @@ class CommandShell(object):
         codepage = kwargs.get('codepage', 437)
 
         # Build the Session and the SOAP Headers
-        self.session = Session(endpoint, 'krb5', username, password)
+        self.shell_id = None
+        self.session = Session(endpoint, 'ntlm', username, password)
         self.resource = ResourceLocator(CommandShell.ShellResource)
         self.resource.add_option('WINRS_CODEPAGE', codepage, True)
         if bool(kwargs.get('noprofile', False)):
@@ -34,17 +53,22 @@ class CommandShell(object):
         """
         Opens the remote shell
         """
-        shell = Element('Shell', ns=CommandShell.ShellNamespace)
-        shell.append(CommandShell.InputStreams).setText(" ".join(input_streams))
-        shell.append(CommandShell.OutputStreams).setText(" ".join(output_streams))
-        shell.append(Element('IdleTimeout', ns=CommandShell.ShellNamespace).setText(self.idle_timeout))
-        if self.working_directory is not None:
-            shell.append(Element('WorkingDirectory'), ns=CommandShell.ShellNamespace).setText(self.working_directory)
-        if self.environment is not None:
-            shell.append(CommandShell._build_environment())
+        shell = dict()
+        shell['rsp:InputStreams'] = " ".join(input_streams)
+        shell['rsp:OutputStreams'] = " ".join(output_streams)
+        shell['rsp:IdleTimeout'] = str(self.idle_timeout)
 
-        response = self.session.create(self.resource, shell)
-        self.shellId = response.ReferenceParameters.SelectorSet.Selector.value
+        if self.working_directory is not None:
+            shell['rsp:WorkingDirectory'] = str(self.working_directory)
+
+        if self.environment is not None:
+            variables = []
+            for key, value in self.environment.items():
+                variables.append({'#text': str(value), '@Name': key})
+            shell['rsp:Environment'] = {'Variable': variables}
+
+        response = self.session.create(self.resource, {'rsp:Shell': shell})
+        self.shell_id = response['rsp:Shell']['rsp:ShellId']
 
     def run(self, command, arguments=(), console_mode_stdin=True, skip_cmd_shell=False):
         """This function does something.
@@ -60,21 +84,27 @@ class CommandShell(object):
         """
         logging.info('running command: ' + command)
         resource = ResourceLocator(CommandShell.ShellResource)
-        resource.add_selector('ShellId', self.shellId)
+        resource.add_selector('ShellId', self.shell_id)
         resource.add_option('WINRS_SKIP_CMD_SHELL', ['FALSE', 'TRUE'][bool(skip_cmd_shell)], True)
         resource.add_option('WINRS_CONSOLEMODE_STDIN', ['FALSE', 'TRUE'][bool(console_mode_stdin)], True)
 
-        commandline = Element('CommandLine', ns=CommandShell.ShellNamespace)
-        commandline.append(Element('Command', ns=CommandShell.ShellNamespace).setText(command))
-
+        command = OrderedDict([('rsp:Command', command)])
         for argument in arguments:
-            commandline.append(Element('Arguments', ns=CommandShell.ShellNamespace).setText(argument))
+            command['rsp:Arguments'] = argument
 
-        response = self.session.command(resource, commandline)
-        logging.info('receive command: ' + response.CommandId)
-        return response.CommandId
+        response = self.session.command(resource, {'rsp:CommandLine': command})
+        command_id = response['rsp:CommandResponse']['rsp:CommandId']
+        logging.info('receive command: ' + command_id)
+        return command_id
 
-    def receive(self, command_id, streams=('stdout', 'stderr')):
+    def receive(self, command_id, streams=('stdout', 'stderr'), command_timeout=60):
+        """
+        Recieves data
+        :param command_id:
+        :param streams:
+        :param command_timeout:
+        :return:
+        """
         logging.info('receive command: ' + command_id)
         (session_streams, exit_code, done) = self._receive_once(command_id, streams)
         complete_streams = session_streams
@@ -89,55 +119,59 @@ class CommandShell(object):
             return complete_streams, exit_code
 
     def _receive_once(self, command_id, streams=('stdout', 'stderr')):
+        """
+        Recieves data
+        :param command_id:
+        :param streams:
+        :return:
+        """
         logging.info('receive command: ' + command_id)
         resource = ResourceLocator(CommandShell.ShellResource)
-        resource.add_selector('ShellId', self.shellId)
-        stream_element = Element('DesiredStream', ns=CommandShell.ShellNamespace).setText(" ".join(streams))
-        stream_element.attributes.append(Attribute("CommandId", command_id))
-        receive = Element('Receive', ns=CommandShell.ShellNamespace)
-        receive.append(stream_element)
+        resource.add_selector('ShellId', self.shell_id)
 
-        response = self.session.recieve(resource, receive)
+        stream_attributes = {'#text': " ".join(streams), '@CommandId': command_id}
+        receive = {'rsp:Receive': {'rsp:DesiredStream': stream_attributes}}
+        response = self.session.recieve(resource, receive)['rsp:ReceiveResponse']
+
         decoded_streams = {}
         for stream in streams:
             decoded_streams[stream] = ''
 
-        if isinstance(response.Stream, list):
-            responseStreams = response.Stream
+        stream = response['rsp:Stream']
+        if isinstance(stream, list):
+            response_streams = stream
         else:
-            responseStreams = [response.Stream]
+            response_streams = [response.Stream]
 
-        for stream in responseStreams:
-            if stream._CommandId == command_id and hasattr(stream, 'value'):
-                decoded_streams[stream._Name] += base64.b64decode(stream.value)
-
+        for stream in response_streams:
+            if stream['@CommandId'] == command_id and '#text' in stream:
+                decoded_streams[stream['@Name']] += base64.b64decode(stream['#text'])
+                # XPRESS Compression Testing
+                # print "\\x".join("{:02x}".format(ord(c)) for c in base64.b64decode(stream['#text']))
+                # data = base64.b64decode(stream['#text'])
+                # f = open('c:\\users\\developer\\temp\\data.bin', 'wb')
+                # f.write(data)
+                # f.close()
+                # decode = api.compression.xpress_decode(data[4:])
         exit_code = None
-        done = response.CommandState._State == CommandShell.StateDone
+        done = response['rsp:CommandState']['@State'] == CommandShell.StateDone
         if done:
-            exit_code = int(response.CommandState.ExitCode)
+            exit_code = int(response['rsp:CommandState']['rsp:ExitCode'])
 
         return decoded_streams, exit_code, done
 
     def close(self):
+        """
+        Closes pipe
+        :return:
+        """
         resource = ResourceLocator(CommandShell.ShellResource)
-        resource.add_selector('ShellId', self.shellId)
+        resource.add_selector('ShellId', self.shell_id)
         self.session.delete(resource)
 
-    @staticmethod
-    def _build_environment(environment):
-        variables = Element('Environment', ns=CommandShell.ShellNamespace)
-        for key, value in environment.items():
-            variable = Element('Variable', ns=CommandShell.ShellNamespace).setText(value)
-            variable.attributes.append(Attribute("Name", key))
-            variables.append(variable)
-        return variables
 
 # Namespaces
 CommandShell.ShellResource = 'http://schemas.microsoft.com/wbem/wsman/1/windows/shell/cmd'
-CommandShell.ShellNamespace = ('rsp', 'http://schemas.microsoft.com/wbem/wsman/1/windows/shell')
-CommandShell.InputStreams = Element('InputStreams', ns=CommandShell.ShellNamespace)
-CommandShell.OutputStreams = Element('OutputStreams', ns=CommandShell.ShellNamespace)
-CommandShell.Environment = Element('Environment', ns=CommandShell.ShellNamespace)
 
 # Command States
 CommandShell.StateDone = 'http://schemas.microsoft.com/wbem/wsman/1/windows/shell/CommandState/Done'

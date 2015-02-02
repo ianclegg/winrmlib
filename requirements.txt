@@ -1,2 +1,3 @@
-suds-jurko
-pykerberos
+xmltodict
+ntlmlib
+requests

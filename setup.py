@@ -88,7 +88,7 @@ setup(
     license='MIT license',
     packages=['winrmlib', 'winrmlib.api'],
     package_data={'winrmlib.api': ['assets/xsd/*.xsd', 'assets/*.wsdl']},
-    install_requires=['xmltodict', 'isodate'],
+    install_requires=[],
     cmdclass={'bootstrap_env': BootstrapEnvironmentCommand},
     classifiers=[
         'Development Status :: 3 - Alpha',
