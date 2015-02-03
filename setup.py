@@ -4,9 +4,6 @@ import urllib
 from setuptools import setup
 from distutils.core import Command
 
-__version__ = '0.0.3'
-project_name = 'winrmlib'
-
 # PyPi supports only reStructuredText, so pandoc should be installed
 # before uploading package
 try:
@@ -14,7 +11,15 @@ try:
     long_description = pypandoc.convert('README.md', 'rst')
 except ImportError:
     long_description = ''
+	
+# We will run git to get the latest 'tag' and use this to release to PyPi
+import subprocess
+process = subprocess.Popen('git describe --abbrev=0', stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+git_tag = iter(p.stdout.readline, b'')
+print 'Using Git Tag: ' + git_tag
 
+__version__ = git_tag
+project_name = 'winrmlib'
 
 class BootstrapEnvironmentCommand(Command):
     description = 'create project development environment from scratch'
@@ -88,7 +93,7 @@ setup(
     license='MIT license',
     packages=['winrmlib', 'winrmlib.api'],
     package_data={'winrmlib.api': ['assets/xsd/*.xsd', 'assets/*.wsdl']},
-    install_requires=[],
+    install_requires=['requests','pyopenssl','xmltodict','ntlmlib'],
     cmdclass={'bootstrap_env': BootstrapEnvironmentCommand},
     classifiers=[
         'Development Status :: 3 - Alpha',

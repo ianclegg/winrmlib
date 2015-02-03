@@ -37,7 +37,6 @@ class Session(object):
         self.max_envelope = self._build_max_envelope(kwargs.get('max_envelope_size', Session.MaxEnvelopeSize))
         self.locale = self._build_locale(kwargs.get('locale', Session.Locale))
 
-        self.To = ElementTree.Element(Session.AddressingNamespace + 'To', text=endpoint)
         # The operation timeout header overrides the timeout set on the server. Some users may prefer to
         # use the servers default timeout, so this header will only be included if the user explicitly sets
         # an operation timeout.
@@ -177,8 +176,6 @@ Session.Address = {'a:Address': {
 # Static members that can be safely shared with all instances
 Session.WSManNamespace = '{http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd}'
 Session.AddressingNamespace = '{http://schemas.xmlsoap.org/ws/2004/08/addressing}'
-Session.Action = ElementTree.Element(Session.AddressingNamespace + 'Action')
-
 Session.SoapContentType = {'Content-Type': 'application/soap+xml; charset=utf-8'}
 
 # WSMan SOAP Actions
@@ -188,11 +185,3 @@ Session.DeleteAction = 'http://schemas.xmlsoap.org/ws/2004/09/transfer/Delete'
 Session.CreateAction = 'http://schemas.xmlsoap.org/ws/2004/09/transfer/Create'
 Session.CommandAction = 'http://schemas.microsoft.com/wbem/wsman/1/windows/shell/Command'
 Session.ReceiveAction = 'http://schemas.microsoft.com/wbem/wsman/1/windows/shell/Receive'
-
-# Register Namespaces with ElementTree
-ElementTree.register_namespace("s", 'http://www.w3.org/2003/05/soap-envelope')
-ElementTree.register_namespace("w", 'http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd')
-ElementTree.register_namespace("a", 'http://schemas.xmlsoap.org/ws/2004/08/addressing')
-
-
-

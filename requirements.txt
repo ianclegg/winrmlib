@@ -1,3 +1,4 @@
-xmltodict
-ntlmlib
 requests
+xmltodict
+pyopenssl
+ntlmlib

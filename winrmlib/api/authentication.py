@@ -19,28 +19,29 @@ import logging
 
 from struct import pack, unpack, calcsize
 from requests.auth import AuthBase
-from OpenSSL import _util
 
 from ntlmlib.context import NtlmContext
 from ntlmlib.structure import Structure
 from ntlmlib.authentication import PasswordAuthentication
 
 try:
-    import binascii
-    import OpenSSL
-    import ssl
-    import sspi
-    from OpenSSL import SSL, crypto
     from Crypto.PublicKey import RSA
     from Crypto.Util.asn1 import DerSequence
     from Crypto.Util.asn1 import DerObject
     from Crypto.Cipher import ARC4
+except ImportError:
+    print "Unable to import Crypto, ensure the python 'pycrypto' package is correctly installed"
+
+try:
+    from OpenSSL import (
+        SSL, _util)
     from OpenSSL.SSL import (
         Error, SysCallError, WantReadError, WantWriteError, ZeroReturnError)
     from OpenSSL.SSL import (
-        Context, ContextType, Session, Connection, ConnectionType, SSLeay_version)
-except:
+        Context, ContextType, Session, Connection, ConnectionType)
+except ImportError:
     print "pyOpenSSL is not installed, can't continue"
+
 log = logging.getLogger(__name__)
 
 # TODO: Refactor GSS into an independent module
@@ -158,7 +159,7 @@ def asn1decode(data = ''):
     else:
         pad = 0
         ans = data[:len1]
-        return ans, len(ans) + pad + 1
+    return ans, len(ans) + pad + 1
 
 class GSSAPI():
 # Generic GSSAPI Header Format
@@ -218,7 +219,7 @@ class GSSAPI():
         ans += asn1encode(
                pack('B',ASN1_OID) +
                asn1encode(self['UUID']) +
-               self['Payload'] )
+               self['Payload'])
         return ans
 
 # TODO: These are CredSSP specific ASN1 structures and should be refactored without GSS
@@ -250,22 +251,22 @@ class TSCredentials(GSSAPI):
 #        credType    [0] INTEGER,
 #        credentials [1] OCTET STRING
 # }
-   def __init__(self, data=None):
-       GSSAPI.__init__(self,data)
-       del self['UUID']
+    def __init__(self, data=None):
+        GSSAPI.__init__(self,data)
+        del self['UUID']
 
-   def getData(self):
-     # Let's pack the credentials field
-     credentials =  pack('B',0xa1)
-     credentials += asn1encode(pack('B',ASN1_OCTET_STRING) +
-                    asn1encode(self['credentials']))
+    def getData(self):
+        # Let's pack the credentials field
+        credentials =  pack('B',0xa1)
+        credentials += asn1encode(pack('B',ASN1_OCTET_STRING) +
+                       asn1encode(self['credentials']))
 
-     ans = pack('B',ASN1_SEQUENCE)
-     ans += asn1encode( pack('B', 0xa0) +
+        ans = pack('B',ASN1_SEQUENCE)
+        ans += asn1encode( pack('B', 0xa0) +
             asn1encode( pack('B', 0x02) +
             asn1encode( pack('B', self['type']))) +
             credentials)
-     return ans
+        return ans
 
 
 class TSRequest(GSSAPI):
@@ -281,111 +282,111 @@ class TSRequest(GSSAPI):
 #}
 #
 
-   def __init__(self, data=None):
-       GSSAPI.__init__(self,data)
-       del self['UUID']
+    def __init__(self, data=None):
+        GSSAPI.__init__(self,data)
+        del self['UUID']
 
-   def fromString(self, data = None):
-       next_byte = unpack('B',data[:1])[0]
-       if next_byte != ASN1_SEQUENCE:
-           raise Exception('SEQUENCE expected! (%x)' % next_byte)
-       data = data[1:]
-       decode_data, total_bytes = asn1decode(data)
+    def fromString(self, data = None):
+        next_byte = unpack('B',data[:1])[0]
+        if next_byte != ASN1_SEQUENCE:
+            raise Exception('SEQUENCE expected! (%x)' % next_byte)
+        data = data[1:]
+        decode_data, total_bytes = asn1decode(data)
 
-       next_byte = unpack('B',decode_data[:1])[0]
-       if next_byte !=  0xa0:
+        next_byte = unpack('B',decode_data[:1])[0]
+        if next_byte !=  0xa0:
             raise Exception('0xa0 tag not found %x' % next_byte)
-       decode_data = decode_data[1:]
-       next_bytes, total_bytes = asn1decode(decode_data)
-       # The INTEGER tag must be here
-       if unpack('B',next_bytes[0])[0] != 0x02:
-           raise Exception('INTEGER tag not found %r' % next_byte)
-       next_byte, _ = asn1decode(next_bytes[1:])
-       self['Version'] = unpack('B',next_byte)[0]
-       decode_data = decode_data[total_bytes:]
-       next_byte = unpack('B',decode_data[:1])[0]
-       if next_byte == 0xa1:
-           # We found the negoData token
-           decode_data, total_bytes = asn1decode(decode_data[1:])
+        decode_data = decode_data[1:]
+        next_bytes, total_bytes = asn1decode(decode_data)
+        # The INTEGER tag must be here
+        if unpack('B',next_bytes[0])[0] != 0x02:
+            raise Exception('INTEGER tag not found %r' % next_byte)
+        next_byte, _ = asn1decode(next_bytes[1:])
+        self['Version'] = unpack('B',next_byte)[0]
+        decode_data = decode_data[total_bytes:]
+        next_byte = unpack('B',decode_data[:1])[0]
+        if next_byte == 0xa1:
+            # We found the negoData token
+            decode_data, total_bytes = asn1decode(decode_data[1:])
 
-           next_byte = unpack('B',decode_data[:1])[0]
-           if next_byte != ASN1_SEQUENCE:
-               raise Exception('ASN1_SEQUENCE tag not found %r' % next_byte)
-           decode_data, total_bytes = asn1decode(decode_data[1:])
+            next_byte = unpack('B',decode_data[:1])[0]
+            if next_byte != ASN1_SEQUENCE:
+                raise Exception('ASN1_SEQUENCE tag not found %r' % next_byte)
+            decode_data, total_bytes = asn1decode(decode_data[1:])
 
-           next_byte = unpack('B',decode_data[:1])[0]
-           if next_byte != ASN1_SEQUENCE:
-               raise Exception('ASN1_SEQUENCE tag not found %r' % next_byte)
-           decode_data, total_bytes = asn1decode(decode_data[1:])
+            next_byte = unpack('B',decode_data[:1])[0]
+            if next_byte != ASN1_SEQUENCE:
+                raise Exception('ASN1_SEQUENCE tag not found %r' % next_byte)
+            decode_data, total_bytes = asn1decode(decode_data[1:])
 
-           next_byte = unpack('B',decode_data[:1])[0]
-           if next_byte != 0xa0:
-               raise Exception('0xa0 tag not found %r' % next_byte)
-           decode_data, total_bytes = asn1decode(decode_data[1:])
+            next_byte = unpack('B',decode_data[:1])[0]
+            if next_byte != 0xa0:
+                raise Exception('0xa0 tag not found %r' % next_byte)
+            decode_data, total_bytes = asn1decode(decode_data[1:])
 
-           next_byte = unpack('B',decode_data[:1])[0]
-           if next_byte != ASN1_OCTET_STRING:
-               raise Exception('ASN1_OCTET_STRING tag not found %r' % next_byte)
-           decode_data2, total_bytes = asn1decode(decode_data[1:])
-           # the rest should be the data
-           self['negoTokens'] = decode_data2
-           decode_data = decode_data[total_bytes+1:]
+            next_byte = unpack('B',decode_data[:1])[0]
+            if next_byte != ASN1_OCTET_STRING:
+                raise Exception('ASN1_OCTET_STRING tag not found %r' % next_byte)
+            decode_data2, total_bytes = asn1decode(decode_data[1:])
+            # the rest should be the data
+            self['negoTokens'] = decode_data2
+            decode_data = decode_data[total_bytes+1:]
 
-       if next_byte == 0xa2:
-           # ToDo: Check all this
-           # We found the authInfo token
-           decode_data, total_bytes = asn1decode(decode_data[1:])
-           next_byte = unpack('B',decode_data[:1])[0]
-           if next_byte != ASN1_OCTET_STRING:
-               raise Exception('ASN1_OCTET_STRING tag not found %r' % next_byte)
-           decode_data2, total_bytes = asn1decode(decode_data[1:])
-           self['authInfo'] = decode_data2
-           decode_data = decode_data[total_bytes+1:]
+        if next_byte == 0xa2:
+            # ToDo: Check all this
+            # We found the authInfo token
+            decode_data, total_bytes = asn1decode(decode_data[1:])
+            next_byte = unpack('B',decode_data[:1])[0]
+            if next_byte != ASN1_OCTET_STRING:
+                raise Exception('ASN1_OCTET_STRING tag not found %r' % next_byte)
+            decode_data2, total_bytes = asn1decode(decode_data[1:])
+            self['authInfo'] = decode_data2
+            decode_data = decode_data[total_bytes+1:]
 
-       if next_byte == 0xa3:
-           # ToDo: Check all this
-           # We found the pubKeyAuth token
-           decode_data, total_bytes = asn1decode(decode_data[1:])
-           next_byte = unpack('B',decode_data[:1])[0]
-           if next_byte != ASN1_OCTET_STRING:
-               raise Exception('ASN1_OCTET_STRING tag not found %r' % next_byte)
-           decode_data2, total_bytes = asn1decode(decode_data[1:])
-           self['pubKeyAuth'] = decode_data2
+        if next_byte == 0xa3:
+            # ToDo: Check all this
+            # We found the pubKeyAuth token
+            decode_data, total_bytes = asn1decode(decode_data[1:])
+            next_byte = unpack('B',decode_data[:1])[0]
+            if next_byte != ASN1_OCTET_STRING:
+                raise Exception('ASN1_OCTET_STRING tag not found %r' % next_byte)
+            decode_data2, total_bytes = asn1decode(decode_data[1:])
+            self['pubKeyAuth'] = decode_data2
 
-   def getData(self):
-     # Do we have pubKeyAuth?
-     if self.fields.has_key('pubKeyAuth'):
-         pubKeyAuth = pack('B',0xa3)
-         pubKeyAuth += asn1encode(pack('B', ASN1_OCTET_STRING) +
-                       asn1encode(self['pubKeyAuth']))
-     else:
-         pubKeyAuth = ''
+    def getData(self):
+        # Do we have pubKeyAuth?
+        if self.fields.has_key('pubKeyAuth'):
+            pubKeyAuth = pack('B',0xa3)
+            pubKeyAuth += asn1encode(pack('B', ASN1_OCTET_STRING) + asn1encode(self['pubKeyAuth']))
+        else:
+            pubKeyAuth = ''
 
-     if self.fields.has_key('authInfo'):
-         authInfo = pack('B',0xa2)
-         authInfo+= asn1encode(pack('B', ASN1_OCTET_STRING) +
+        if self.fields.has_key('authInfo'):
+            authInfo = pack('B',0xa2)
+            authInfo+= asn1encode(pack('B', ASN1_OCTET_STRING) +
                        asn1encode(self['authInfo']))
-     else:
-         authInfo = ''
+        else:
+            authInfo = ''
 
-     if self.fields.has_key('negoTokens'):
-         negoData = pack('B',0xa1)
-         negoData += asn1encode(pack('B', ASN1_SEQUENCE) +
-                    asn1encode(pack('B', ASN1_SEQUENCE) +
-                    asn1encode(pack('B', 0xa0) +
-                    asn1encode(pack('B', ASN1_OCTET_STRING) +
-                    asn1encode(self['negoTokens'])))))
-     else:
-         negoData = ''
+        if self.fields.has_key('negoTokens'):
+            negoData = pack('B',0xa1)
+            negoData += asn1encode(pack('B', ASN1_SEQUENCE) +
+                        asn1encode(pack('B', ASN1_SEQUENCE) +
+                        asn1encode(pack('B', 0xa0) +
+                        asn1encode(pack('B', ASN1_OCTET_STRING) +
+                        asn1encode(self['negoTokens'])))))
+        else:
+            negoData = ''
 
-     ans = pack('B', ASN1_SEQUENCE)
-     ans += asn1encode(pack('B',0xa0) +
+        ans = pack('B', ASN1_SEQUENCE)
+        ans += asn1encode(pack('B',0xa0) +
             # credssp version (Integer type is 0x02, version is 0x02)
             asn1encode(pack('B',0x02) + asn1encode(pack('B',0x02))) +
             # credssp version 2
             negoData + authInfo + pubKeyAuth)
 
-     return ans
+        return ans
+
 
 # TODO: NTLM is encryption is not supported
 # TODO: You should use HTTPS to get Transport security
