@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 import urllib
 from setuptools import setup
@@ -11,17 +12,31 @@ try:
     long_description = pypandoc.convert('README.md', 'rst')
 except ImportError:
     long_description = ''
-	
+
+__version__ = '0.0.0'
+project_name = 'winrmlib'
+
 # We will run git to get the latest 'tag' and use this to release to PyPi
 import subprocess
-process = subprocess.Popen(['git', 'describe', '--abbrev=0'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-process.wait()
-git_tag = process.stdout.readline()
+try:
+    process = subprocess.Popen(['git', 'describe', '--abbrev=0'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    process.wait()
+    git_tag = process.stdout.readline()
 
-print 'Using Git Tag: ' + git_tag
+    if process.returncode == 0:
+        # versions must be in the range: 0.0.0 to 999.999.999
+        if re.match('^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$', git_tag) is None:
+            __version__ = git_tag
+        else:
+            print "git tag '%s' is not a valid version number" % git_tag
+    else:
+        print "'git describe' failed to find the latest tag"
 
-__version__ = git_tag
-project_name = 'winrmlib'
+except OSError:
+    print "Unable to run 'git describe --abbrev=0', ensure git is correctly installed"
+
+print 'build package version: %s' % __version__
+print 'build package name: %s' % project_name
 
 class BootstrapEnvironmentCommand(Command):
     description = 'create project development environment from scratch'
