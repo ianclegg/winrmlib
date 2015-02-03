@@ -500,9 +500,9 @@ class HttpNtlmAuth(AuthBase):
 
 
 class HttpCredSSPAuth(AuthBase):
-    def __init__(self, username, password):
+    def __init__(self, domain, username, password):
         # TODO: What about the domain?
-        self.domain = "ntdomain"
+        self.domain = domain
         self.username = username
         self.password = password
         self.credssp_regex = re.compile('(?:.*,)*\s*CredSSP\s*([^,]*),?', re.I)

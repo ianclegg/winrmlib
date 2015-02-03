@@ -41,7 +41,7 @@ class CommandShell(object):
 
         # Build the Session and the SOAP Headers
         self.shell_id = None
-        self.session = Session(endpoint, 'ntlm', username, password)
+        self.session = Session(endpoint, username, password)
         self.resource = ResourceLocator(CommandShell.ShellResource)
         self.resource.add_option('WINRS_CODEPAGE', codepage, True)
         if bool(kwargs.get('noprofile', False)):

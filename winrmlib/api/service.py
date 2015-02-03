@@ -13,6 +13,7 @@
 # limitations under the License.
 __author__ = 'ian.clegg@sourcewarp.com'
 
+import re
 import xmltodict
 from collections import OrderedDict
 from requests import Session
@@ -27,7 +28,7 @@ class Service(object):
     SOAP Service
     """
 
-    def __init__(self, endpoint, auth, username, password, delegation=False, **kwargs):
+    def __init__(self, endpoint, username, password, delegation=False, **kwargs):
         """
         # Kerberos authentication does not require a password if the MIT kerberos GSS-API mechanism already has a
         # valid service ticket for the WSMAN service on the target server. However if the callee wishes to use
@@ -40,18 +41,7 @@ class Service(object):
         """
         self.session = Session()
         self.endpoint = endpoint
-
-        if not auth in Service.Avaliable_Mechanisms:
-            raise WSManException("The following authentication mechanisms are supported 'basic', 'ntlm' or 'kerberos'")
-
-        if delegation:
-            if auth == 'basic':
-                raise WSManException('Credential Delegation (CredSSP) requires NTLM or Kerberos authentication')
-            self.session.auth = HttpCredSSPAuth(username, password)
-        elif auth == 'krb5':
-            self.session.auth = HttpCredSSPAuth(username, password) #, self.session)
-        elif auth == 'ntlm':
-            self.session.auth = HttpNtlmAuth("SERVER2012", username, password, self.session)
+        self.session.auth = Service._determine_auth_mechanism(username, password, delegation)
 
     def invoke(self, headers, body):
         """
@@ -77,6 +67,36 @@ class Service(object):
                 raise AuthenticationException("")
         else:
             Service._parse_response(response.content)
+
+    @staticmethod
+    def _determine_auth_mechanism(username, password, delegation):
+        """
+        if the username contains at '@' sign we will use kerberos
+        if the username contains a '/ we will use ntlm
+        if the user does not contain either we will try ntlm, then basic
+        either NTLM or Kerberos. In fact its basically always Negotiate.
+        """
+        if re.match('(.*)@(.+)', username) is not None:
+            if delegation is True:
+                raise Exception('Kerberos is not yet supported, specify the username in <domain>\<username> form for NTLM')
+            else:
+                raise Exception('Kerberos is not yet supported, specify the username in <domain>>\<username> form for NTLM')
+
+        # check for NT format 'domain\username' a blank domain or username is invalid
+        legacy = re.match('(.*)\\\\(.*)', username)
+        if legacy is not None:
+            if not legacy.group(1):
+                raise Exception('Please specify the Windows domain for user in <domain>\<username> format')
+            if not legacy.group(2):
+                raise Exception('Please specify the Username of the user in <domain>\<username> format')
+            if delegation is True:
+                return HttpCredSSPAuth(legacy.group(1), legacy.group(2), password)
+            else:
+                return HttpNtlmAuth(legacy.group(1), legacy.group(2), password)
+
+        # attempt NTLM (local account, not domain) - if username is '' then we try anonymous NTLM auth
+        # as if anyone will configure that - uf!
+        return HttpNtlmAuth('', username, password)
 
     @staticmethod
     def _create_request(headers, body):

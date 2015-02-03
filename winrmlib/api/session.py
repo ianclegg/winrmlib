@@ -15,7 +15,6 @@ __author__ = 'ian.clegg@sourcewarp.com'
 
 import uuid
 from collections import OrderedDict
-from xml.etree import ElementTree
 from service import Service
 from resourcelocator import ResourceLocator
 
@@ -25,13 +24,13 @@ class Session(object):
     Factory object for building sessions and connection options
     """
 
-    def __init__(self, endpoint, auth, username, password, **kwargs):
+    def __init__(self, endpoint, username, password, **kwargs):
         # transport = Session._build_transport(endpoint, auth, username, password)
 
         # Store the endpoint and the service we will use to invoke it
         self.endpoint = endpoint
         # False == No CredSSP
-        self.service = Service(endpoint, auth, username, password, True)
+        self.service = Service(endpoint, username, password, True)
 
         # The user can set override some defaults for the Session, they can also be overridden on each request
         self.max_envelope = self._build_max_envelope(kwargs.get('max_envelope_size', Session.MaxEnvelopeSize))
