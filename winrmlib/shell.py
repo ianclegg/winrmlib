@@ -89,8 +89,7 @@ class CommandShell(object):
         resource.add_option('WINRS_CONSOLEMODE_STDIN', ['FALSE', 'TRUE'][bool(console_mode_stdin)], True)
 
         command = OrderedDict([('rsp:Command', command)])
-        for argument in arguments:
-            command['rsp:Arguments'] = argument
+        command['rsp:Arguments'] = list(arguments)
 
         response = self.session.command(resource, {'rsp:CommandLine': command})
         command_id = response['rsp:CommandResponse']['rsp:CommandId']
