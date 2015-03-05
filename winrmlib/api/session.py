@@ -157,11 +157,19 @@ class Session(object):
         # TODO: Implement support for Microsoft XPRESS compression
         # https://social.msdn.microsoft.com/Forums/en-US/501e4f29-edfc-4240-af3b-344264060b99/
         # wsman-xpress-remote-shell-compression?forum=os_windowsprotocols
-        #headers.update({'rsp:CompressionType': {'@soap:mustUnderstand': 'true', '#text': 'xpress'}})
+
+        # headers.update({'rsp:CompressionType': {'@soap:mustUnderstand': 'true', '#text': 'xpress'}})
+        # only include the operation timeout if the user specified one when the class was instantiated
+        # or if the user explicitly set one when invoking a method.
+        if operation_timeout is not None:
+            headers.update(self._build_operation_timeout(operation_timeout))
+        elif self.default_operation_timeout is not None:
+            headers.update(self.default_operation_timeout)
 
         headers.update(self._build_selectors(resource.selectors))
         headers.update(self._build_options(resource.options))
         headers.update(self._build_max_envelope(max_envelope_size))
+        headers.update(self._build_operation_timeout(operation_timeout))
         headers.update(self._build_locale(locale))
         return headers
 

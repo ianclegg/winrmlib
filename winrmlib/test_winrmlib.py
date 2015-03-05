@@ -13,35 +13,11 @@
 # limitations under the License.
 __author__ = 'ian.clegg@sourcewarp.com'
 
-class WSManException(Exception):
-    """
-
-    """
-    pass
-
-class WSManAuthenticationException(Exception):
-    """
-    Exception raised when authentication fails
-    """
-    pass
+import unittest
+import tests
 
 """
-Fault Mappings
+Master Test Suite
 """
-class WSManOperationException(WSManException):
-    """
-    Exception raised when a WSMan SOAP Fault is received
-    """
-    pass
-
-class WSManOperationTimeoutException(WSManException):
-    """
-    Exception raised when a WSMan SOAP Fault is received
-    """
-    pass
-
-class WSManQuotaLimitException(WSManException):
-    """
-    Exception raised when a WSMan SOAP Fault is received
-    """
-    pass
+if __name__ == '__main__':
+    unittest.main(tests, verbosity=2)

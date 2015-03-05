@@ -19,6 +19,7 @@ import logging
 from collections import OrderedDict
 from api.resourcelocator import ResourceLocator
 from api.session import Session
+from api.exception import WSManOperationException
 
 # compression suport still in devel
 # import api.compression
@@ -40,7 +41,7 @@ class CommandShell(object):
         codepage = kwargs.get('codepage', 437)
 
         # Build the Session and the SOAP Headers
-        self.shell_id = None
+        self.__shell_id = None
         self.session = Session(endpoint, username, password)
         self.resource = ResourceLocator(CommandShell.ShellResource)
         self.resource.add_option('WINRS_CODEPAGE', codepage, True)
@@ -68,7 +69,7 @@ class CommandShell(object):
             shell['rsp:Environment'] = {'Variable': variables}
 
         response = self.session.create(self.resource, {'rsp:Shell': shell})
-        self.shell_id = response['rsp:Shell']['rsp:ShellId']
+        self.__shell_id = response['rsp:Shell']['rsp:ShellId']
 
     def run(self, command, arguments=(), console_mode_stdin=True, skip_cmd_shell=False):
         """This function does something.
@@ -84,7 +85,7 @@ class CommandShell(object):
         """
         logging.info('running command: ' + command)
         resource = ResourceLocator(CommandShell.ShellResource)
-        resource.add_selector('ShellId', self.shell_id)
+        resource.add_selector('ShellId', self.__shell_id)
         resource.add_option('WINRS_SKIP_CMD_SHELL', ['FALSE', 'TRUE'][bool(skip_cmd_shell)], True)
         resource.add_option('WINRS_CONSOLEMODE_STDIN', ['FALSE', 'TRUE'][bool(console_mode_stdin)], True)
 
@@ -105,19 +106,18 @@ class CommandShell(object):
         :return:
         """
         logging.info('receive command: ' + command_id)
-        (session_streams, exit_code, done) = self._receive_once(command_id, streams)
-        complete_streams = session_streams
-        while not done:
-            (session_streams, exit_code, done) = self._receive_once(command_id, streams)
-            for stream_name in session_streams:
-                complete_streams[stream_name] += session_streams[stream_name]
+        response_streams = dict.fromkeys(streams, '')
+        (complete, exit_code) = self._receive_poll(command_id, response_streams)
+        while not complete:
+            (complete, exit_code) = self._receive_poll(command_id, response_streams)
 
-        if sorted(complete_streams.keys()) == sorted(['stderr', 'stdout']):
-            return complete_streams['stdout'], complete_streams['stderr'], exit_code
+        # This retains some compatibility with pywinrm
+        if sorted(response_streams.keys()) == sorted(['stderr', 'stdout']):
+            return response_streams['stdout'], response_streams['stderr'], exit_code
         else:
-            return complete_streams, exit_code
+            return response_streams, exit_code
 
-    def _receive_once(self, command_id, streams=('stdout', 'stderr')):
+    def _receive_poll(self, command_id, response_streams):
         """
         Recieves data
         :param command_id:
@@ -126,25 +126,25 @@ class CommandShell(object):
         """
         logging.info('receive command: ' + command_id)
         resource = ResourceLocator(CommandShell.ShellResource)
-        resource.add_selector('ShellId', self.shell_id)
+        resource.add_selector('ShellId', self.__shell_id)
 
-        stream_attributes = {'#text': " ".join(streams), '@CommandId': command_id}
+        stream_attributes = {'#text': " ".join(response_streams.keys()), '@CommandId': command_id}
         receive = {'rsp:Receive': {'rsp:DesiredStream': stream_attributes}}
-        response = self.session.recieve(resource, receive)['rsp:ReceiveResponse']
 
-        decoded_streams = {}
-        for stream in streams:
-            decoded_streams[stream] = ''
+        try:
+            response = self.session.recieve(resource, receive)['rsp:ReceiveResponse']
+        except Exception, e:
+            return False
 
         stream = response['rsp:Stream']
         if isinstance(stream, list):
-            response_streams = stream
+            session_streams = stream
         else:
-            response_streams = [response.Stream]
+            session_streams = [response.Stream]
 
-        for stream in response_streams:
+        for stream in session_streams:
             if stream['@CommandId'] == command_id and '#text' in stream:
-                decoded_streams[stream['@Name']] += base64.b64decode(stream['#text'])
+                response_streams[stream['@Name']] += base64.b64decode(stream['#text'])
                 # XPRESS Compression Testing
                 # print "\\x".join("{:02x}".format(ord(c)) for c in base64.b64decode(stream['#text']))
                 # data = base64.b64decode(stream['#text'])
@@ -152,12 +152,11 @@ class CommandShell(object):
                 # f.write(data)
                 # f.close()
                 # decode = api.compression.xpress_decode(data[4:])
-        exit_code = None
         done = response['rsp:CommandState']['@State'] == CommandShell.StateDone
         if done:
             exit_code = int(response['rsp:CommandState']['rsp:ExitCode'])
 
-        return decoded_streams, exit_code, done
+        return done, exit_code
 
     def close(self):
         """
@@ -165,7 +164,7 @@ class CommandShell(object):
         :return:
         """
         resource = ResourceLocator(CommandShell.ShellResource)
-        resource.add_selector('ShellId', self.shell_id)
+        resource.add_selector('ShellId', self.__shell_id)
         self.session.delete(resource)
 
 

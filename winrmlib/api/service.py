@@ -14,11 +14,13 @@
 __author__ = 'ian.clegg@sourcewarp.com'
 
 import re
+import logging
 import xmltodict
 from collections import OrderedDict
 from requests import Session
 from exception import WSManException
-from exception import AuthenticationException
+from exception import WSManOperationException
+from exception import WSManAuthenticationException
 from authentication import HttpCredSSPAuth
 from authentication import HttpNtlmAuth
 
@@ -39,7 +41,7 @@ class Service(object):
         #
         # Kerberos requires the username in UPN (RFC xxxx) form. UPN or NetBIOS usernames can be used whith NTLM
         """
-        self.session = Session()
+        self.session = kwargs.get('session', Session())
         self.endpoint = endpoint
         self.session.auth = Service._determine_auth_mechanism(username, password, delegation)
 
@@ -48,32 +50,25 @@ class Service(object):
         Invokes the soap service
         """
         xml = Service._create_request(headers, body)
-      #  try:
-        response = self.session.post(self.endpoint, verify=False, data=xml)
-    #    except Exception, e:
-         #   b =e
-      #      pass
-      #  print response.content
+
+        try:
+            response = self.session.post(self.endpoint, verify=False, data=xml)
+        except Exception, e:
+            raise WSManException(e)
 
         if response.status_code == 200:
             return Service._parse_response(response.content)
 
-        if 500 < response.status_code >= 400:
-            if response.status_code == 401:
-                # auth denied
-                raise AuthenticationException("")
-            else:
-                # another 40x
-                raise AuthenticationException("")
-        else:
-            Service._parse_response(response.content)
+        if response.status_code == 401:
+            raise WSManAuthenticationException('the remote host rejected authentication')
+
+        raise WSManException('the remote host returned an unexpected http status code')
 
     @staticmethod
     def _determine_auth_mechanism(username, password, delegation):
         """
         if the username contains at '@' sign we will use kerberos
         if the username contains a '/ we will use ntlm
-        if the user does not contain either we will try ntlm, then basic
         either NTLM or Kerberos. In fact its basically always Negotiate.
         """
         if re.match('(.*)@(.+)', username) is not None:
@@ -94,6 +89,7 @@ class Service(object):
             else:
                 return HttpNtlmAuth(legacy.group(1), legacy.group(2), password)
 
+        return HttpCredSSPAuth("SERVER2012", "Administrator", password)
         # attempt NTLM (local account, not domain) - if username is '' then we try anonymous NTLM auth
         # as if anyone will configure that - uf!
         return HttpNtlmAuth('', username, password)
@@ -120,13 +116,17 @@ class Service(object):
         """
         try:
             soap_response = xmltodict.parse(xml, process_namespaces=True, namespaces=Service.Namespaces)
-            body = soap_response['soap:Envelope']['soap:Body']
-            if body is not None and 'Fault' in body:
-                raise WSManException("SOAP Fault")
-            return body
-        except Exception, e:
-            b =e
-            raise WSManException("Invalid Soap Response")
+        except Exception:
+            logging.debug('unable to parse the xml response: %s', xml)
+            raise WSManException("the remote host returned an invalid soap response")
+
+        body = soap_response['soap:Envelope']['soap:Body']
+        if body is None:
+            raise WSManException("the remote host returned an empty soap response")
+        if 'soap:Fault' in body:
+            raise WSManOperationException(body['soap:Fault']['soap:Reason']['soap:Text']['#text'])
+        return body
+
 
 Service.Avaliable_Mechanisms = ["basic", "ntlm", "kerberos"]
 Service.Namespaces = {

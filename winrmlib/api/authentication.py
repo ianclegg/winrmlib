@@ -20,6 +20,9 @@ import logging
 from struct import pack, unpack, calcsize
 from requests.auth import AuthBase
 
+import sys
+#sys.path.append('''C:\Users\developer\Documents\GitHub\\ntlmlib''')
+
 from ntlmlib.context import NtlmContext
 from ntlmlib.structure import Structure
 from ntlmlib.authentication import PasswordAuthentication
@@ -388,14 +391,11 @@ class TSRequest(GSSAPI):
         return ans
 
 
-# TODO: NTLM is encryption is not supported
-# TODO: You should use HTTPS to get Transport security
-# TODO: RUN: winrm set winrm/config/service @{AllowUnencrypted="true"}
 class HttpNtlmAuth(AuthBase):
     # NTLM Negotiate Request
     def __init__(self, domain, username, password, session=None):
         # TODO: What about the domain?
-        domain = "SERVER2012"
+        domain = "BP1"
         self.username = username
         self.password = password
         self.domain = domain
@@ -421,14 +421,13 @@ class HttpNtlmAuth(AuthBase):
         encrypted_body = context.wrap_message(plaintext_body)
 
         request.headers['Content-Type'] = 'multipart/encrypted;protocol="application/HTTP-SPNEGO-session-encrypted";boundary="Encrypted Boundary"'
-        body = ''
-        body += '--Encrypted Boundary\r\n'
-        body += ' Content-Type: application/HTTP-SPNEGO-session-encrypted\r\n'
-        body += ' OriginalContent: type=application/soap+xml;charset=UTF-8;Length='
+        body =  '--Encrypted Boundary\r\n'
+        body += '\tContent-Type: application/HTTP-SPNEGO-session-encrypted\r\n'
+        body += '\tOriginalContent: type=application/soap+xml;charset=UTF-8;Length='
         body += str(len(plaintext_body))
         body += '\r\n--Encrypted Boundary\r\n'
         body += 'Content-Type: application/octet-stream\r\n'
-        body += '\x10\x00\x00\x00'  # length of NTLM signature as 32bit word
+        body += '\x10\x00\x00\x00'  # length of NTLM signature is a fixed 32bit word
         body += encrypted_body
         body += '--Encrypted Boundary--\r\n'
         request.body = body
@@ -452,10 +451,9 @@ class HttpNtlmAuth(AuthBase):
                 raise Exception("failed")
 
             authenticate = context_generator.send(challenge_response)
-            #self._set_ntlm_header(response.request, authenticate)
-            #http_response = yield self._encrypt(response.request, context)
-            http_response = yield self._set_ntlm_header(response.request, authenticate)
 
+            self._set_ntlm_header(response.request, authenticate)
+            http_response = yield self._encrypt(response.request, context)
             if self._get_ntlm_header(http_response) is None:
                 raise Exception('Authentication Failed')
 
@@ -501,22 +499,23 @@ class HttpNtlmAuth(AuthBase):
 
 class HttpCredSSPAuth(AuthBase):
     def __init__(self, domain, username, password):
-        # TODO: What about the domain?
         self.domain = domain
         self.username = username
         self.password = password
         self.credssp_regex = re.compile('(?:.*,)*\s*CredSSP\s*([^,]*),?', re.I)
+        # Windows 2008 R2 and earlier are unable to negotiate TLS 1.2 by default so use TLS 1.0
         self.tls_credssp_context = SSL.Context(SSL.TLSv1_METHOD)
-        # The cipher suites for CredSSP TLS session do not appear to be explicitly
-        # documented. Inspection of the Microsoft SChannel implementation on Windows
-        # 2012 R2 revels that RC4-SHA must be specified
-        self.tls_credssp_context.set_cipher_list('RC4-SHA')
+        # OpenSSL introduced a fix to CBC ciphers by adding empty fragments, but this breaks Microsoft's TLS 1.0
+        # implementation. OpenSSL added a flag we need to use which ensures OpenSSL does not send empty fragments
+        # SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS (0x00000800L) | SSL_OP_TLS_BLOCK_PADDING_BUG (0x00000200L)
+        self.tls_credssp_context.set_options(0x00000800L | 0x00000200L)
+        self.tls_credssp_context.set_cipher_list('ALL')
 
     def _get_credssp_header(self, response):
         authenticate_header = response.headers.get('www-authenticate', None)
         if authenticate_header:
             match_obj = self.credssp_regex.search(authenticate_header)
-            if match_obj and len(match_obj.group(1)) > 0:
+            if match_obj and len(match_obj.groups()) > 0:
                 encoded = match_obj.group(1)
                 return base64.b64decode(encoded)
         return None
@@ -556,8 +555,12 @@ class HttpCredSSPAuth(AuthBase):
         response = (yield)
         context = self._get_credssp_header(response)
 
-        # 1. First, secure the channel with a RC4-SHA TLS Handshake
         if context is None:
+            raise Exception('The remote host did not respond with a \'www-authenticate\' header containing '
+                            '\'CredSSP\' as an available authentication mechanism')
+
+        # 1. First, secure the channel with a RC4-SHA TLS Handshake
+        if not context:
             tls_credssp = SSL.Connection(self.tls_credssp_context)
             tls_credssp.set_connect_state()
             while True:
@@ -566,11 +569,18 @@ class HttpCredSSPAuth(AuthBase):
                 except SSL.WantReadError:
                     response = yield self._set_credssp_header(response.request, tls_credssp.bio_read(4096))
                     context = self._get_credssp_header(response)
-                    if context is None:
-                        raise Exception('TLS Handshake error')
+                    if context is None or not context:
+                        raise Exception('The remote host rejected the CredSSP TLS handshake')
                     tls_credssp.bio_write(context)
                 else:
                     break
+
+        # add logging to display the negotiated cipher (move to a function)
+        openssl_lib = _util.binding.lib
+        ffi = _util.binding.ffi
+        cipher = openssl_lib.SSL_get_current_cipher(tls_credssp._ssl)
+        cipher_name = ffi.string( openssl_lib.SSL_CIPHER_get_name(cipher))
+        # print cipher_name
 
         # 2. Send an TSRequest containing an NTLM Negotiate Request
         context = NtlmContext(PasswordAuthentication(self.domain, self.username, self.password), session_security='encrypt')
@@ -585,8 +595,8 @@ class HttpCredSSPAuth(AuthBase):
 
         # Extract and decrypt the encoded TSRequest response struct from the Negotiate header
         authenticate_header = self._get_credssp_header(http_challenge_response)
-        if authenticate_header is None:
-            raise Exception("failed")
+        if not authenticate_header or authenticate_header is None:
+            raise Exception("The remote host rejected the CredSSP negotiation token")
         tls_credssp.bio_write(authenticate_header)
 
         # NTLM Challenge Response and Server Public Key Validation
@@ -629,8 +639,10 @@ class HttpCredSSPAuth(AuthBase):
         final = tls_credssp.bio_read(8192)
         http_response = yield self._set_credssp_header(response.request, final)
 
-        if self._get_credssp_header(http_response) is None:
-                raise Exception('Authentication Failed')
+        #does the server need to respond with a final credssp header, probably not.
+        #if we arrive here something probably went wrong?
+        #if self._get_credssp_header(http_response) is None:
+        #        raise Exception('Authentication Failed')
 
     def handle_401(self, response, **kwargs):
         credssp_processor = self._credssp_processor()

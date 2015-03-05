@@ -1,0 +1,26 @@
+<s:Envelope xml:lang="en-GB" xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:x="http://schemas.xmlsoap.org/ws/2004/09/transfer" xmlns:e="http://schemas.xmlsoap.org/ws/2004/08/eventing" xmlns:n="http://schemas.xmlsoap.org/ws/2004/09/enumeration" xmlns:w="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd" xmlns:p="http://schemas.microsoft.com/wbem/wsman/1/wsman.xsd">
+    <s:Header>
+        <a:Action>http://schemas.dmtf.org/wbem/wsman/1/wsman/fault</a:Action>
+        <a:MessageID>uuid:84F704AA-9EED-4773-9961-204A37B0579D</a:MessageID>
+        <a:To>http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous</a:To>
+        <a:RelatesTo>26ba4524-38c7-46fe-a31d-52c49d7df4f9</a:RelatesTo>
+    </s:Header>
+    <s:Body>
+        <s:Fault>
+            <s:Code>
+                <s:Value>s:Receiver</s:Value>
+                <s:Subcode>
+                    <s:Value>w:TimedOut</s:Value>
+                </s:Subcode>
+            </s:Code>
+            <s:Reason>
+                <s:Text xml:lang="">The WS-Management service cannot complete the operation within the time specified in OperationTimeout.  </s:Text>
+            </s:Reason>
+            <s:Detail>
+                <f:WSManFault xmlns:f="http://schemas.microsoft.com/wbem/wsman/1/wsmanfault" Code="2150858793" Machine="bp1xeuap3221">
+                    <f:Message>The WS-Management service cannot complete the operation within the time specified in OperationTimeout.  </f:Message>
+                </f:WSManFault>
+            </s:Detail>
+        </s:Fault>
+    </s:Body>
+</s:Envelope>
