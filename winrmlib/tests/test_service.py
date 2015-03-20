@@ -17,10 +17,10 @@ import mock
 import unittest
 import responses
 
-from api.service import Service
-from api.exception import WSManException
-from api.exception import WSManOperationException
-from api.exception import WSManAuthenticationException
+from winrmlib.api.service import Service
+from winrmlib.api.exception import WSManException
+from winrmlib.api.exception import WSManOperationException
+from winrmlib.api.exception import WSManAuthenticationException
 
 class ServiceParseCase(unittest.TestCase):
 

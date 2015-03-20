@@ -46,7 +46,7 @@ dictConfig(logging_config)
 logger = logging.getLogger()
 logger.debug("ok")
 
-from shell import CommandShell
+from winrmlib.shell import CommandShell
 
 class WinRmClient(object):
     """

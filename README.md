@@ -1,4 +1,4 @@
-# winrmlib (beta) [![Build Status](https://travis-ci.org/ianclegg/winrmlib.svg?branch=master)](https://travis-ci.org/ianclegg/winrmlib)
+# winrmlib (beta) [![Build Status](https://travis-ci.org/ianclegg/winrmlib.svg?branch=master)](https://travis-ci.org/ianclegg/winrmlib) [![Downloads](https://pypip.in/download/winrmlib/badge.svg)](https://pypi.python.org/pypi/winrmlib/) [![Latest Version](https://pypip.in/version/winrmlib/badge.svg)](https://pypi.python.org/pypi/winrmlib/)
 
 ## Vision:
 A robust, fast and efficient 'first-class' Python Library for Windows Remote Management

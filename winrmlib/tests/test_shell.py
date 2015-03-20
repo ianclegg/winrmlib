@@ -13,21 +13,17 @@
 # limitations under the License.
 __author__ = 'ian.clegg@sourcewarp.com'
 
-import mock
 import unittest
+import mock
 
-import sys
-sys.path.append("../")
-
-from shell import CommandShell
-
+from winrmlib.shell import CommandShell
 
 class ShellOpenCase(unittest.TestCase):
     """
     Test cases covering the Shell.open() method
     """
 
-    @mock.patch('shell.Session')
+    @mock.patch('winrmlib.shell.Session')
     def test_should_open_set_shell_id(self, mock_session):
         expected_id = '0000'
         mock_instance = mock_session.return_value
@@ -48,7 +44,7 @@ class ShellRunCase(unittest.TestCase):
     """
 
     """
-    @mock.patch('shell.Session')
+    @mock.patch('winrmlib.shell.Session')
     def test_should_open_set_shell_id(self, mock_session):
         mock_instance = mock_session.return_value
         mock_instance.create.return_value = {'rsp:CommandResponse': {'rsp:CommandId': '123'}}
@@ -66,7 +62,7 @@ class ShellReceiveCase(unittest.TestCase):
     Test cases covering the Shell.open() method
     """
 
-    @mock.patch('shell.Session')
+    @mock.patch('winrmlib.shell.Session')
     def test_should_receive(self, mock_session):
         pass
 
