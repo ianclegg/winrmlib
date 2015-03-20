@@ -14,9 +14,13 @@
 __author__ = 'ian.clegg@sourcewarp.com'
 
 import uuid
-from collections import OrderedDict
 from service import Service
 from resourcelocator import ResourceLocator
+
+try:
+    from collections import OrderedDict
+except ImportError:
+    from ordereddict import OrderedDict
 
 
 class Session(object):

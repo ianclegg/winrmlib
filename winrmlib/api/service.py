@@ -16,7 +16,6 @@ __author__ = 'ian.clegg@sourcewarp.com'
 import re
 import logging
 import xmltodict
-from collections import OrderedDict
 from requests import Session
 from exception import WSManException
 from exception import WSManOperationException
@@ -24,6 +23,10 @@ from exception import WSManAuthenticationException
 from authentication import HttpCredSSPAuth
 from authentication import HttpNtlmAuth
 
+try:
+    from collections import OrderedDict
+except ImportError:
+    from ordereddict import OrderedDict
 
 class Service(object):
     """

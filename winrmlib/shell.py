@@ -16,15 +16,17 @@ __author__ = 'ian.clegg@sourcewarp.com'
 import base64
 import logging
 
-from collections import OrderedDict
-from api.resourcelocator import ResourceLocator
 from api.session import Session
+from api.resourcelocator import ResourceLocator
 from api.exception import WSManOperationException
 
-# compression suport still in devel
-# import api.compression
+try:
+    from collections import OrderedDict
+except ImportError:
+    from ordereddict import OrderedDict
 
 logger = logging.getLogger(__name__)
+
 
 class CommandShell(object):
 
