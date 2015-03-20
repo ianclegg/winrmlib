@@ -1,4 +1,5 @@
 requests
+ordereddict
 xmltodict
 pyopenssl
 ntlmlib
