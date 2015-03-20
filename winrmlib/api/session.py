@@ -169,7 +169,6 @@ class Session(object):
         headers.update(self._build_selectors(resource.selectors))
         headers.update(self._build_options(resource.options))
         headers.update(self._build_max_envelope(max_envelope_size))
-        headers.update(self._build_operation_timeout(operation_timeout))
         headers.update(self._build_locale(locale))
         return headers
 

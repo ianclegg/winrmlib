@@ -19,9 +19,7 @@ import logging
 
 from struct import pack, unpack, calcsize
 from requests.auth import AuthBase
-
 import sys
-#sys.path.append('''C:\Users\developer\Documents\GitHub\\ntlmlib''')
 
 from ntlmlib.context import NtlmContext
 from ntlmlib.structure import Structure
@@ -390,16 +388,19 @@ class TSRequest(GSSAPI):
 
         return ans
 
+import struct
 
 class HttpNtlmAuth(AuthBase):
     # NTLM Negotiate Request
     def __init__(self, domain, username, password, session=None):
         # TODO: What about the domain?
-        domain = "BP1"
+        domain = "SERVER2012"
         self.username = username
         self.password = password
         self.domain = domain
         self.ntlm_regex = re.compile('(?:.*,)*\s*Negotiate\s*([^,]*),?', re.I)
+        self.password_authenticator = PasswordAuthentication(self.domain, self.username, self.password)
+        self.context = None
 
     def _get_ntlm_header(self, response):
         authreq = response.headers.get('www-authenticate', None)
@@ -416,31 +417,42 @@ class HttpNtlmAuth(AuthBase):
         return request
 
     @staticmethod
-    def _encrypt(request, context):
-        plaintext_body = request.body
-        encrypted_body = context.wrap_message(plaintext_body)
-
-        request.headers['Content-Type'] = 'multipart/encrypted;protocol="application/HTTP-SPNEGO-session-encrypted";boundary="Encrypted Boundary"'
-        body =  '--Encrypted Boundary\r\n'
+    def _encrypt(content, context):
+        encrypted_body, signature = context.wrap_message(content)
+        body = '--Encrypted Boundary\r\n'
         body += '\tContent-Type: application/HTTP-SPNEGO-session-encrypted\r\n'
         body += '\tOriginalContent: type=application/soap+xml;charset=UTF-8;Length='
-        body += str(len(plaintext_body))
+        body += str(len(content))
         body += '\r\n--Encrypted Boundary\r\n'
         body += 'Content-Type: application/octet-stream\r\n'
-        body += '\x10\x00\x00\x00'  # length of NTLM signature is a fixed 32bit word
-        body += encrypted_body
+        body += struct.pack('<i', len(signature))
+        body += signature + encrypted_body
         body += '--Encrypted Boundary--\r\n'
-        request.body = body
-        request.headers['Content-Length'] = str(len(body))
-        return request
+        return body
 
-    def _ntlm_processor(self):
+    @staticmethod
+    def _decrypt(response, context):
+        mime_parts = response.content.split('--Encrypted Boundary')
+        length = int(mime_parts[1].split(';Length=')[1].strip())
+        parts = mime_parts[2].split("application/octet-stream")
+        payload = parts[1][2:]
+        # first 4 bytes indicate the length of the signature
+        signature_length = struct.unpack('<i', payload[:4])[0]
+        # extract signature and encrypted message
+        signature = payload[4:signature_length + 4]
+        cipher_text = payload[signature_length + 4:]
+
+        if len(cipher_text) != length:
+            raise Exception("extracted length not equal to expected length")
+        plaintext = context.unwrap_message(cipher_text, signature)
+        return plaintext
+
+    def _ntlm_processor(self, context):
         response = (yield)
-        context = self._get_ntlm_header(response)
+        header = self._get_ntlm_header(response)
 
-        if context is None:
+        if header is None:
             # NTLM Negotiate Request
-            context = NtlmContext(PasswordAuthentication(self.domain, self.username, self.password), session_security='encrypt')
             context_generator = context.initialize_security_context()
 
             negotiate_token = context_generator.send(None)
@@ -452,13 +464,20 @@ class HttpNtlmAuth(AuthBase):
 
             authenticate = context_generator.send(challenge_response)
 
-            self._set_ntlm_header(response.request, authenticate)
-            http_response = yield self._encrypt(response.request, context)
+            self._set_ntlm_header(http_response.request, authenticate)
+
+            logging.debug("sending final NTLM auth and encrypted body")
+            http_response.request.body = self._encrypt(self.body, context)
+            http_response.request.headers['Content-Length'] = str(len(http_response.request.body))
+            http_response = yield http_response.request
+
             if self._get_ntlm_header(http_response) is None:
                 raise Exception('Authentication Failed')
 
     def handle_401(self, response, **kwargs):
-        ntlm_processor = self._ntlm_processor()
+        logging.debug("authenticating")
+        self.context = NtlmContext(self.password_authenticator, session_security='encrypt')
+        ntlm_processor = self._ntlm_processor(self.context)
         next(ntlm_processor)
 
         while response.status_code == 401:
@@ -470,41 +489,56 @@ class HttpNtlmAuth(AuthBase):
 
         return response
 
-    def handle_other(self, response, **kwargs):
-        return response
-
     def handle_response(self, response, **kwargs):
-        #if self.pos is not None:
-            # Rewind the file position indicator of the body to where
-            # it was to resend the request.
-        #    response.request.body.seek(self.pos)
-
         if response.status_code == 401:
-            _r = self.handle_401(response, **kwargs)
-            log.debug("handle_response(): returning {0}".format(_r))
-            return _r
+            response = self.handle_401(response, **kwargs)
+            log.debug("handle_response(): returning {0}".format(response))
+
+        # TODO check the response header to see if the response is encrypted first
+        if response.status_code == 200:
+            logging.debug("decrypting body")
+            message = self._decrypt(response, self.context)
+            response._content = message
+            return response
         else:
-            _r = self.handle_other(response, **kwargs)
-            log.debug("handle_response(): returning {0}".format(_r))
-            return _r
+            raise Exception("server did could decrypt our message? why")
 
     def __call__(self, request):
         request.headers["Connection"] = "Keep-Alive"
-        request.headers["Content-Type"] = "application/soap+xml;charset=UTF-8"
+        request.headers['Content-Type'] = 'multipart/encrypted;'
+        request.headers['Content-Type'] += 'protocol="application/HTTP-SPNEGO-session-encrypted";'
+        request.headers['Content-Type'] += 'boundary="Encrypted Boundary"'
 
+        # TODO: Support 'AllowUnencrypted'
+        # All NTLM requests are encrypted at the moment, Windows implements an 'AllowUnencypted' flag
+        # which permits clients to send unencrypted requests. It would ne nice to support this later
+        # request.headers["Content-Type"] = "application/soap+xml;charset=UTF-8"
         request.register_hook('response', self.handle_response)
+
+        # We should not send any content to the target host until we have established a security
+        # context through the 'handle_response' hook. store the request content which will be
+        # encrypted and sent once the context and session security are in place
+        if self.context is None:
+            self.body = str(request.body)
+        else:
+            logging.debug("encrypting body")
+            request.body = self._encrypt(request.body, self.context)
+
         return request
 
 
-
+"""
+"""
 class HttpCredSSPAuth(AuthBase):
     def __init__(self, domain, username, password):
         self.domain = domain
         self.username = username
         self.password = password
         self.credssp_regex = re.compile('(?:.*,)*\s*CredSSP\s*([^,]*),?', re.I)
+
         # Windows 2008 R2 and earlier are unable to negotiate TLS 1.2 by default so use TLS 1.0
         self.tls_credssp_context = SSL.Context(SSL.TLSv1_METHOD)
+
         # OpenSSL introduced a fix to CBC ciphers by adding empty fragments, but this breaks Microsoft's TLS 1.0
         # implementation. OpenSSL added a flag we need to use which ensures OpenSSL does not send empty fragments
         # SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS (0x00000800L) | SSL_OP_TLS_BLOCK_PADDING_BUG (0x00000200L)
@@ -600,13 +634,15 @@ class HttpCredSSPAuth(AuthBase):
         tls_credssp.bio_write(authenticate_header)
 
         # NTLM Challenge Response and Server Public Key Validation
+        ts_request = TSRequest()
         ts_request.fromString(tls_credssp.recv(8192))
         challenge_token = ts_request['negoTokens']
         server_cert = tls_credssp.get_peer_certificate()
-        certificate_digest = base64.b16decode(server_cert.digest('SHA256').replace(':', ''))
 
-        channel_binding_structure = gss_channel_bindings_struct()
-        channel_binding_structure['application_data'] = "tls-server-end-point:" + certificate_digest
+        # not using channel bindings
+        #certificate_digest = base64.b16decode(server_cert.digest('SHA256').replace(':', ''))
+        ## channel_binding_structure = gss_channel_bindings_struct()
+        ## channel_binding_structure['application_data'] = "tls-server-end-point:" + certificate_digest
         public_key = HttpCredSSPAuth._get_rsa_public_key(server_cert)
 
         # The RSAPublicKey must be 'wrapped' using the negotiated GSSAPI mechanism and send to the server along with
@@ -617,10 +653,22 @@ class HttpCredSSPAuth(AuthBase):
         ts_request['negoTokens'] = context_generator.send(challenge_token)
         ts_request['pubKeyAuth'] = context.wrap_message(public_key)
 
+        print ":".join("{:02x}".format(ord(c)) for c in ts_request['pubKeyAuth'])
+
         tls_credssp.send(ts_request.getData())
         enc_type3 = tls_credssp.bio_read(8192)
-        auth_response = yield self._set_credssp_header(response.request, enc_type3)
-        # authentciated!
+        http_auth_response = yield self._set_credssp_header(response.request, enc_type3)
+
+        # TLS decrypt the response, then ASN decode and check the error code
+        auth_response = self._get_credssp_header(http_auth_response)
+        if not auth_response or auth_response is None:
+            raise Exception("The remote host rejected the challenge response")
+
+        tls_credssp.bio_write(auth_response)
+        ts_request = TSRequest()
+        ts_request.fromString(tls_credssp.recv(8192))
+        a = ts_request['pubKeyAuth']
+        print ":".join("{:02x}".format(ord(c)) for c in a)
 
         # 4. Send the Credentials to be delegated, these are encrypted with both NTLM v2 and then by TLS
         tsp = TSPasswordCreds()
@@ -639,6 +687,8 @@ class HttpCredSSPAuth(AuthBase):
         final = tls_credssp.bio_read(8192)
         http_response = yield self._set_credssp_header(response.request, final)
 
+        if http_response.status_code == 401:
+            raise Exception('Authentication Failed')
         #does the server need to respond with a final credssp header, probably not.
         #if we arrive here something probably went wrong?
         #if self._get_credssp_header(http_response) is None:
@@ -679,5 +729,6 @@ class HttpCredSSPAuth(AuthBase):
         request.headers["Connection"] = "Keep-Alive"
         request.headers["Content-Type"] = "application/soap+xml;charset=UTF-8"
 
+        # do not send the plaintext body until secured
         request.register_hook('response', self.handle_response)
         return request

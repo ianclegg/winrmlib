@@ -13,6 +13,39 @@
 # limitations under the License.
 __author__ = 'ian.clegg@sourcewarp.com'
 
+import sys
+import logging
+from logging.config import dictConfig
+
+# configure a logger to get some insight on what ntlmlib does
+logging_config = dict(
+{
+    'version': 1,
+    'formatters': {
+        'standard': {
+            'format': '%(asctime)s [%(levelname)s] %(name)s: %(message)s'
+        },
+    },
+    'handlers': {
+        'default': {
+            'level': 'ERROR',
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'loggers': {
+        '': {
+            'handlers': ['default'],
+            'level': 'ERROR',
+            'propagate': True
+        }
+    }
+})
+
+
+dictConfig(logging_config)
+logger = logging.getLogger()
+logger.debug("ok")
+
 from shell import CommandShell
 
 class WinRmClient(object):
@@ -24,13 +57,15 @@ class WinRmClient(object):
         """
         shell = CommandShell('http://192.168.145.132:5985/wsman', 'Administrator', 'Pa55w0rd')
         """
-        shell = CommandShell('http://192.168.137.154:5985/wsman', 'admin', 'Pa55w0rd')
+        shell = CommandShell('http://192.168.137.154:5985/wsman', 'Administrator', 'Pa55w0rd')
         shell.open()
         command_id = shell.run('ipconfig', ['/all'])
         (stdout, stderr, exit_code) = shell.receive(command_id)
-        print stdout
+        sys.stdout.write(stdout.strip() + '\r\n')
         shell.close()
 
         return None
+
 if __name__ == '__main__':
-    WinRmClient.create_session()
+    for x in range(0, 1):
+        WinRmClient.create_session()

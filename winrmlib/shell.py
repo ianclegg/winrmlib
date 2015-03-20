@@ -24,6 +24,7 @@ from api.exception import WSManOperationException
 # compression suport still in devel
 # import api.compression
 
+logger = logging.getLogger(__name__)
 
 class CommandShell(object):
 
@@ -136,11 +137,9 @@ class CommandShell(object):
         except Exception, e:
             return False
 
-        stream = response['rsp:Stream']
-        if isinstance(stream, list):
-            session_streams = stream
-        else:
-            session_streams = [response.Stream]
+        session_streams = response['rsp:Stream']
+        if not isinstance(session_streams, list):
+            session_streams = [session_streams]
 
         for stream in session_streams:
             if stream['@CommandId'] == command_id and '#text' in stream:
@@ -155,7 +154,7 @@ class CommandShell(object):
         done = response['rsp:CommandState']['@State'] == CommandShell.StateDone
         if done:
             exit_code = int(response['rsp:CommandState']['rsp:ExitCode'])
-
+        else: exit_code = None
         return done, exit_code
 
     def close(self):

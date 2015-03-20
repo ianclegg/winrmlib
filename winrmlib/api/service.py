@@ -40,6 +40,9 @@ class Service(object):
         # such as NTLM or Kerberos; basic authentication cannot be used.
         #
         # Kerberos requires the username in UPN (RFC xxxx) form. UPN or NetBIOS usernames can be used whith NTLM
+        #
+        # when TCP connection is closed, its auto-opened
+        #
         """
         self.session = kwargs.get('session', Session())
         self.endpoint = endpoint
@@ -53,6 +56,7 @@ class Service(object):
 
         try:
             response = self.session.post(self.endpoint, verify=False, data=xml)
+            logging.debug(response.content)
         except Exception, e:
             raise WSManException(e)
 
@@ -62,7 +66,7 @@ class Service(object):
         if response.status_code == 401:
             raise WSManAuthenticationException('the remote host rejected authentication')
 
-        raise WSManException('the remote host returned an unexpected http status code')
+        raise WSManException('the remote host returned an unexpected http status code: %s' % response.status_code)
 
     @staticmethod
     def _determine_auth_mechanism(username, password, delegation):
@@ -89,7 +93,7 @@ class Service(object):
             else:
                 return HttpNtlmAuth(legacy.group(1), legacy.group(2), password)
 
-        return HttpCredSSPAuth("SERVER2012", "Administrator", password)
+        #return HttpCredSSPAuth("SERVER2012", "Administrator", password)
         # attempt NTLM (local account, not domain) - if username is '' then we try anonymous NTLM auth
         # as if anyone will configure that - uf!
         return HttpNtlmAuth('', username, password)
@@ -120,10 +124,9 @@ class Service(object):
             logging.debug('unable to parse the xml response: %s', xml)
             raise WSManException("the remote host returned an invalid soap response")
 
+        # the delete response has an empty body
         body = soap_response['soap:Envelope']['soap:Body']
-        if body is None:
-            raise WSManException("the remote host returned an empty soap response")
-        if 'soap:Fault' in body:
+        if body is not None and 'soap:Fault' in body:
             raise WSManOperationException(body['soap:Fault']['soap:Reason']['soap:Text']['#text'])
         return body
 
