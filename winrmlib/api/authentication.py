@@ -19,7 +19,6 @@ import logging
 
 from struct import pack, unpack, calcsize
 from requests.auth import AuthBase
-import sys
 
 from ntlmlib.context import NtlmContext
 from ntlmlib.structure import Structure

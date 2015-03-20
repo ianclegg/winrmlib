@@ -17,9 +17,6 @@ import mock
 import unittest
 import responses
 
-import sys
-sys.path.append("../")
-
 from api.service import Service
 from api.exception import WSManException
 from api.exception import WSManOperationException
@@ -63,7 +60,7 @@ class ServiceParseCase(unittest.TestCase):
 
 
     @responses.activate
-    def test_200_with_empty_body_raises_exception(self):
+    def test_200_with_empty_body_returns_none(self):
         """
         Ensure a 200 response without a soap body is handled
         """
@@ -72,10 +69,8 @@ class ServiceParseCase(unittest.TestCase):
                       status=200, content_type='application/soap+xml')
 
         service = Service('http://server:5985', 'username', 'password', False)
-
-        with self.assertRaises(WSManException) as context:
-            service.invoke('headers', 'body')
-        self.assertEqual('the remote host returned an empty soap response', context.exception.message)
+        response = service.invoke('headers', 'body')
+        self.assertEqual(None, response)
 
     @responses.activate
     def test_200_with_invalid_body_raises_exception(self):
@@ -121,7 +116,7 @@ class ServiceParseCase(unittest.TestCase):
         service = Service('http://server:5985', 'username', 'password', False)
         with self.assertRaises(WSManException) as context:
             service.invoke('headers', 'body')
-        self.assertEqual(context.exception.message, 'the remote host returned an unexpected http status code')
+        self.assertRegexpMatches(context.exception.message, 'the remote host returned an unexpected http status code.*')
 
     @responses.activate
     def test_401_no_body_exception_translation(self):
@@ -152,7 +147,7 @@ class ServiceParseCase(unittest.TestCase):
         service = Service('http://server:5985', 'username', 'password', False)
         with self.assertRaises(WSManException) as context:
             service.invoke('headers', 'body')
-        self.assertEqual(context.exception.message, 'the remote host returned an unexpected http status code')
+        self.assertRegexpMatches(context.exception.message, 'the remote host returned an unexpected http status code.*')
 
     response = Response()
 
