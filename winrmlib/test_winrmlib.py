@@ -13,6 +13,9 @@
 # limitations under the License.
 __author__ = 'ian.clegg@sourcewarp.com'
 
+import sys
+sys.path.append(".")
+
 import unittest
 import tests
 
