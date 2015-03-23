@@ -509,6 +509,7 @@ class HttpNtlmAuth(AuthBase):
         request.headers['Content-Type'] += 'boundary="Encrypted Boundary"'
 
         # TODO: Support 'AllowUnencrypted'
+        #request.headers["Content-Type"] = "application/soap+xml;charset=UTF-8"
         # All NTLM requests are encrypted at the moment, Windows implements an 'AllowUnencypted' flag
         # which permits clients to send unencrypted requests. It would ne nice to support this later
         # request.headers["Content-Type"] = "application/soap+xml;charset=UTF-8"
@@ -643,16 +644,14 @@ class HttpCredSSPAuth(AuthBase):
         ## channel_binding_structure = gss_channel_bindings_struct()
         ## channel_binding_structure['application_data'] = "tls-server-end-point:" + certificate_digest
         public_key = HttpCredSSPAuth._get_rsa_public_key(server_cert)
-
-        # The RSAPublicKey must be 'wrapped' using the negotiated GSSAPI mechanism and send to the server along with
+        # The _RSAPublicKey must be 'wrapped' using the negotiated GSSAPI mechanism and send to the server along with
         # the final SPNEGO token. This step of the CredSSP protocol is designed to thwart 'man-in-the-middle' attacks
 
         # Build and encrypt the response to the server
         ts_request = TSRequest()
         ts_request['negoTokens'] = context_generator.send(challenge_token)
-        ts_request['pubKeyAuth'] = context.wrap_message(public_key)
-
-        print ":".join("{:02x}".format(ord(c)) for c in ts_request['pubKeyAuth'])
+        public_key_encrypted, signature = context.wrap_message(public_key)
+        ts_request['pubKeyAuth'] = signature + public_key_encrypted
 
         tls_credssp.send(ts_request.getData())
         enc_type3 = tls_credssp.bio_read(8192)

@@ -13,10 +13,8 @@ script:
 after_success:
 - pushd .
 - coveralls
-- pwd && cd src
 - python setup.py sdist
-- cd ..
-- pwd && cd src/dist
+- cd dist
 - pip install winrmlib-*.tar.gz
 - echo "y" | pip uninstall winrmlib
 - popd

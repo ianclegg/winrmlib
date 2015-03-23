@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 __author__ = 'ian.clegg@sourcewarp.com'
-
+import traceback
 import re
 import logging
 import xmltodict
@@ -61,6 +61,7 @@ class Service(object):
             response = self.session.post(self.endpoint, verify=False, data=xml)
             logging.debug(response.content)
         except Exception, e:
+            traceback.print_exc()
             raise WSManException(e)
 
         if response.status_code == 200:

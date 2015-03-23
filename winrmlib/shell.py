@@ -137,7 +137,7 @@ class CommandShell(object):
         try:
             response = self.session.recieve(resource, receive)['rsp:ReceiveResponse']
         except Exception, e:
-            return False
+            return False, None
 
         session_streams = response['rsp:Stream']
         if not isinstance(session_streams, list):
