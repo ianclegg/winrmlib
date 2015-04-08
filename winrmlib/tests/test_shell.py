@@ -18,6 +18,7 @@ import mock
 
 from winrmlib.shell import CommandShell
 
+
 class ShellOpenCase(unittest.TestCase):
     """
     Test cases covering the Shell.open() method
