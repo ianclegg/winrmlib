@@ -1,6 +1,7 @@
 pytest
 pytest-cov
 pytest-pep8
-responses
+unittest2
 mock
+responses
 coveralls

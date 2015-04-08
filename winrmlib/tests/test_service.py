@@ -12,21 +12,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from __future__ import unicode_literals
-from __future__ import with_statement
 
+import sys
 import os
 import mock
-import unittest
 import responses
 
-from extensions import WinrmTestCase
+# unitest2 provides unitest support for Python 2.6
+if sys.version_info < (2, 7):
+    import unittest2
+else:
+    import unittest
 
 from winrmlib.api.service import Service
 from winrmlib.api.exception import WSManException
 from winrmlib.api.exception import WSManOperationException
 from winrmlib.api.exception import WSManAuthenticationException
 
-class ServiceParseCase(WinrmTestCase):
+class ServiceParseCase(unittest.TestCase):
 
     class Response(object):
         def __init__(self):
@@ -62,24 +65,10 @@ class ServiceParseCase(WinrmTestCase):
         self.assertTrue('<x>test</x>' in kwargs['data'])
         self.assertTrue('<w>test</w>' in kwargs['data'])
 
-
-    @responses.activate
-    def test_200_with_empty_body_returns_none(self):
-        """
-        Ensure a 200 response without a soap body is handled
-        """
-        responses.add(responses.POST, 'http://server:5985',
-                      body=self.response.empty_response,
-                      status=200, content_type='application/soap+xml')
-
-        service = Service('http://server:5985', 'username', 'password', False)
-        response = service.invoke('headers', 'body')
-        self.assertEqual(None, response)
-
     @responses.activate
     def test_200_with_invalid_body_raises_exception(self):
         """
-        Ensure a 200 response with an empty or non-xml response is handled with WSManException
+        Ensure a 200 response with an empty or non-xml response is handled
         """
         responses.add(responses.POST, 'http://server:5985',
                       body='invalid_xml_response',
@@ -87,8 +76,9 @@ class ServiceParseCase(WinrmTestCase):
 
         service = Service('http://server:5985', 'username', 'password', False)
 
-        self.assertRaisesWithMessage('the remote host returned an invalid soap response',
-                                     service.invoke, 'headers', 'body')
+        with self.assertRaises(WSManException) as context:
+            service.invoke('headers', 'body')
+        self.assertEqual('the remote host returned an invalid soap response', context.exception.message)
 
     @responses.activate
     def test_200_soap_fault_to_exception_translation(self):
@@ -101,8 +91,10 @@ class ServiceParseCase(WinrmTestCase):
 
         service = Service('http://server:5985', 'username', 'password', False)
 
+        with self.assertRaises(WSManOperationException) as context:
+            service.invoke('headers', 'body')
         error = 'The WS-Management service cannot complete the operation within the time specified in OperationTimeout.'
-        self.assertRaisesWithMessage(error, service.invoke, 'headers', 'body')
+        self.assertRegexpMatches(context.exception.message, error)
 
     @responses.activate
     def test_302_raises_exception(self):
@@ -115,13 +107,14 @@ class ServiceParseCase(WinrmTestCase):
                       status=302)
 
         service = Service('http://server:5985', 'username', 'password', False)
-        self.assertRaisesWithMessage('the remote host returned an unexpected http status code.*',
-                                     service.invoke, 'headers', 'body')
+        with self.assertRaises(WSManException) as context:
+            service.invoke('headers', 'body')
+        self.assertRegexpMatches(context.exception.message, 'the remote host returned an unexpected http status code.*')
 
     @responses.activate
     def test_401_no_body_exception_translation(self):
         """
-        If authentication fails a 401 is returned to requests, this should be a WSManAuthenticationException
+        If authentication fails a 401 is returned to requests, this should be handled
         :return:
         """
         response_headers = {'ContentLength': '0'}
@@ -130,7 +123,9 @@ class ServiceParseCase(WinrmTestCase):
                       status=401)
 
         service = Service('http://server:5985', 'username', 'password', False)
-        self.assertRaisesWithMessage('the remote host rejected authentication', service.invoke, 'headers', 'body')
+        with self.assertRaises(WSManAuthenticationException) as context:
+            service.invoke('headers', 'body')
+        self.assertEqual(context.exception.message, 'the remote host rejected authentication')
 
     @responses.activate
     def test_500_raises_exception(self):
@@ -143,8 +138,9 @@ class ServiceParseCase(WinrmTestCase):
                       adding_headers=response_headers,
                       status=500)
         service = Service('http://server:5985', 'username', 'password', False)
-        self.assertRaisesWithMessage('the remote host returned an unexpected http status code.*',
-                                     service.invoke, 'headers', 'body')
+        with self.assertRaises(WSManException) as context:
+            service.invoke('headers', 'body')
+        self.assertRegexpMatches(context.exception.message, 'the remote host returned an unexpected http status code.*')
 
     response = Response()
 
