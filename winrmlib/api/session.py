@@ -14,8 +14,8 @@
 __author__ = 'ian.clegg@sourcewarp.com'
 
 import uuid
-from service import Service
-from resourcelocator import ResourceLocator
+from winrmlib.api.service import Service
+from winrmlib.api.resourcelocator import ResourceLocator
 
 try:
     from collections import OrderedDict

@@ -17,11 +17,12 @@ import re
 import logging
 import xmltodict
 from requests import Session
-from exception import WSManException
-from exception import WSManOperationException
-from exception import WSManAuthenticationException
-from authentication import HttpCredSSPAuth
-from authentication import HttpNtlmAuth
+
+from winrmlib.api.exception import WSManException
+from winrmlib.api.exception import WSManOperationException
+from winrmlib.api.exception import WSManAuthenticationException
+from winrmlib.api.authentication import HttpCredSSPAuth
+from winrmlib.api.authentication import HttpNtlmAuth
 
 try:
     from collections import OrderedDict
@@ -60,7 +61,7 @@ class Service(object):
         try:
             response = self.session.post(self.endpoint, verify=False, data=xml)
             logging.debug(response.content)
-        except Exception, e:
+        except Exception as e:
             traceback.print_exc()
             raise WSManException(e)
 
@@ -110,7 +111,7 @@ class Service(object):
         SOAP Body element would appear before the Header element.
         """
         envelope = OrderedDict()
-        for (namespace, alias) in Service.Namespaces.iteritems():
+        for (namespace, alias) in Service.Namespaces.items():
             envelope['@xmlns:' + alias] = namespace
         envelope['soap:Header'] = headers
         envelope['soap:Body'] = body

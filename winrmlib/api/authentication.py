@@ -30,7 +30,7 @@ try:
     from Crypto.Util.asn1 import DerObject
     from Crypto.Cipher import ARC4
 except ImportError:
-    print "Unable to import Crypto, ensure the python 'pycrypto' package is correctly installed"
+    raise Exception("Unable to import Crypto, ensure the python 'pycrypto' package is correctly installed")
 
 try:
     from OpenSSL import (
@@ -40,7 +40,7 @@ try:
     from OpenSSL.SSL import (
         Context, ContextType, Session, Connection, ConnectionType)
 except ImportError:
-    print "pyOpenSSL is not installed, can't continue"
+    raise Exception("pyOpenSSL is not installed, can't continue")
 
 log = logging.getLogger(__name__)
 
@@ -212,7 +212,7 @@ class GSSAPI():
 
     def dump(self):
         for i in self.fields.keys():
-            print "%s: {%r}" % (i,self[i])
+            print("%s: {%r}" % (i, self[i]))
 
     def getData(self):
         ans = pack('B',ASN1_AID)
@@ -541,8 +541,8 @@ class HttpCredSSPAuth(AuthBase):
 
         # OpenSSL introduced a fix to CBC ciphers by adding empty fragments, but this breaks Microsoft's TLS 1.0
         # implementation. OpenSSL added a flag we need to use which ensures OpenSSL does not send empty fragments
-        # SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS (0x00000800L) | SSL_OP_TLS_BLOCK_PADDING_BUG (0x00000200L)
-        self.tls_credssp_context.set_options(0x00000800L | 0x00000200L)
+        # SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS (0x00000800) | SSL_OP_TLS_BLOCK_PADDING_BUG (0x00000200)
+        self.tls_credssp_context.set_options(0x00000800 | 0x00000200)
         self.tls_credssp_context.set_cipher_list('ALL')
 
     def _get_credssp_header(self, response):
@@ -665,8 +665,9 @@ class HttpCredSSPAuth(AuthBase):
         tls_credssp.bio_write(auth_response)
         ts_request = TSRequest()
         ts_request.fromString(tls_credssp.recv(8192))
-        a = ts_request['pubKeyAuth']
-        print ":".join("{:02x}".format(ord(c)) for c in a)
+        # TODO: Validate server cert?
+        #a = ts_request['pubKeyAuth']
+        # print ":".join("{:02x}".format(ord(c)) for c in a)
 
         # 4. Send the Credentials to be delegated, these are encrypted with both NTLM v2 and then by TLS
         tsp = TSPasswordCreds()

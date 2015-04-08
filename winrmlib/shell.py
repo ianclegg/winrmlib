@@ -16,9 +16,9 @@ __author__ = 'ian.clegg@sourcewarp.com'
 import base64
 import logging
 
-from api.session import Session
-from api.resourcelocator import ResourceLocator
-from api.exception import WSManOperationException
+from winrmlib.api.session import Session
+from winrmlib.api.resourcelocator import ResourceLocator
+from winrmlib.api.exception import WSManOperationException
 
 try:
     from collections import OrderedDict
@@ -136,10 +136,11 @@ class CommandShell(object):
 
         try:
             response = self.session.recieve(resource, receive)['rsp:ReceiveResponse']
-        except Exception, e:
+        except Exception as e:
             return False, None
 
-        session_streams = response['rsp:Stream']
+        # some responses will not include any output
+        session_streams = response.get('rsp:Stream', ())
         if not isinstance(session_streams, list):
             session_streams = [session_streams]
 

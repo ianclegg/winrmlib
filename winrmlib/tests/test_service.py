@@ -11,7 +11,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-__author__ = 'ian.clegg@sourcewarp.com'
+from __future__ import unicode_literals
+from __future__ import with_statement
+
 import os
 import mock
 import unittest
@@ -52,11 +54,11 @@ class ServiceParseCase(unittest.TestCase):
         service.invoke(headers, {})
 
         args, kwargs = mock_post.call_args
-        self.assertTrue(u'<a>test</a>' in kwargs['data'])
-        self.assertTrue(u'<b>test</b>' in kwargs['data'])
-        self.assertTrue(u'<n>test</n>' in kwargs['data'])
-        self.assertTrue(u'<x>test</x>' in kwargs['data'])
-        self.assertTrue(u'<w>test</w>' in kwargs['data'])
+        self.assertTrue('<a>test</a>' in kwargs['data'])
+        self.assertTrue('<b>test</b>' in kwargs['data'])
+        self.assertTrue('<n>test</n>' in kwargs['data'])
+        self.assertTrue('<x>test</x>' in kwargs['data'])
+        self.assertTrue('<w>test</w>' in kwargs['data'])
 
 
     @responses.activate
@@ -85,7 +87,7 @@ class ServiceParseCase(unittest.TestCase):
 
         with self.assertRaises(WSManException) as context:
             service.invoke('headers', 'body')
-        self.assertEqual('the remote host returned an invalid soap response', context.exception.message)
+        self.assertEqual(str(context.exception), 'the remote host returned an invalid soap response')
 
     @responses.activate
     def test_200_soap_fault_to_exception_translation(self):
@@ -101,7 +103,7 @@ class ServiceParseCase(unittest.TestCase):
         with self.assertRaises(WSManOperationException) as context:
             service.invoke('headers', 'body')
         error = 'The WS-Management service cannot complete the operation within the time specified in OperationTimeout.'
-        self.assertRegexpMatches(context.exception.message, error)
+        self.assertRegexpMatches(str(context.exception), error)
 
     @responses.activate
     def test_302_raises_exception(self):
@@ -116,7 +118,7 @@ class ServiceParseCase(unittest.TestCase):
         service = Service('http://server:5985', 'username', 'password', False)
         with self.assertRaises(WSManException) as context:
             service.invoke('headers', 'body')
-        self.assertRegexpMatches(context.exception.message, 'the remote host returned an unexpected http status code.*')
+        self.assertRegexpMatches(str(context.exception), 'the remote host returned an unexpected http status code.*')
 
     @responses.activate
     def test_401_no_body_exception_translation(self):
@@ -132,7 +134,7 @@ class ServiceParseCase(unittest.TestCase):
         service = Service('http://server:5985', 'username', 'password', False)
         with self.assertRaises(WSManAuthenticationException) as context:
             service.invoke('headers', 'body')
-        self.assertEqual(context.exception.message, 'the remote host rejected authentication')
+        self.assertEqual(str(context.exception), 'the remote host rejected authentication')
 
     @responses.activate
     def test_500_raises_exception(self):
@@ -147,7 +149,7 @@ class ServiceParseCase(unittest.TestCase):
         service = Service('http://server:5985', 'username', 'password', False)
         with self.assertRaises(WSManException) as context:
             service.invoke('headers', 'body')
-        self.assertRegexpMatches(context.exception.message, 'the remote host returned an unexpected http status code.*')
+        self.assertRegexpMatches(str(context.exception), 'the remote host returned an unexpected http status code.*')
 
     response = Response()
 
