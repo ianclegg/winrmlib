@@ -1,7 +1,7 @@
 import unittest
 
 
-class ExtendedTestCase(unittest.TestCase):
+class WinrmTestCase(unittest.TestCase):
 
     def assertRaisesWithMessage(self, msg, func, *args, **kwargs):
         try:

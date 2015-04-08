@@ -19,12 +19,14 @@ import mock
 import unittest
 import responses
 
+from extensions import WinrmTestCase
+
 from winrmlib.api.service import Service
 from winrmlib.api.exception import WSManException
 from winrmlib.api.exception import WSManOperationException
 from winrmlib.api.exception import WSManAuthenticationException
 
-class ServiceParseCase(unittest.TestCase):
+class ServiceParseCase(WinrmTestCase):
 
     class Response(object):
         def __init__(self):
@@ -77,7 +79,7 @@ class ServiceParseCase(unittest.TestCase):
     @responses.activate
     def test_200_with_invalid_body_raises_exception(self):
         """
-        Ensure a 200 response with an empty or non-xml response is handled
+        Ensure a 200 response with an empty or non-xml response is handled with WSManException
         """
         responses.add(responses.POST, 'http://server:5985',
                       body='invalid_xml_response',
@@ -85,9 +87,8 @@ class ServiceParseCase(unittest.TestCase):
 
         service = Service('http://server:5985', 'username', 'password', False)
 
-        with self.assertRaises(WSManException) as context:
-            service.invoke('headers', 'body')
-        self.assertEqual(str(context.exception), 'the remote host returned an invalid soap response')
+        self.assertRaisesWithMessage('the remote host returned an invalid soap response',
+                                     service.invoke, 'headers', 'body')
 
     @responses.activate
     def test_200_soap_fault_to_exception_translation(self):
@@ -100,10 +101,8 @@ class ServiceParseCase(unittest.TestCase):
 
         service = Service('http://server:5985', 'username', 'password', False)
 
-        with self.assertRaises(WSManOperationException) as context:
-            service.invoke('headers', 'body')
         error = 'The WS-Management service cannot complete the operation within the time specified in OperationTimeout.'
-        self.assertRegexpMatches(str(context.exception), error)
+        self.assertRaisesWithMessage(error, service.invoke, 'headers', 'body')
 
     @responses.activate
     def test_302_raises_exception(self):
@@ -116,14 +115,13 @@ class ServiceParseCase(unittest.TestCase):
                       status=302)
 
         service = Service('http://server:5985', 'username', 'password', False)
-        with self.assertRaises(WSManException) as context:
-            service.invoke('headers', 'body')
-        self.assertRegexpMatches(str(context.exception), 'the remote host returned an unexpected http status code.*')
+        self.assertRaisesWithMessage('the remote host returned an unexpected http status code.*',
+                                     service.invoke, 'headers', 'body')
 
     @responses.activate
     def test_401_no_body_exception_translation(self):
         """
-        If authentication fails a 401 is returned to requests, this should be handled
+        If authentication fails a 401 is returned to requests, this should be a WSManAuthenticationException
         :return:
         """
         response_headers = {'ContentLength': '0'}
@@ -132,9 +130,7 @@ class ServiceParseCase(unittest.TestCase):
                       status=401)
 
         service = Service('http://server:5985', 'username', 'password', False)
-        with self.assertRaises(WSManAuthenticationException) as context:
-            service.invoke('headers', 'body')
-        self.assertEqual(str(context.exception), 'the remote host rejected authentication')
+        self.assertRaisesWithMessage('the remote host rejected authentication', service.invoke, 'headers', 'body')
 
     @responses.activate
     def test_500_raises_exception(self):
@@ -147,9 +143,8 @@ class ServiceParseCase(unittest.TestCase):
                       adding_headers=response_headers,
                       status=500)
         service = Service('http://server:5985', 'username', 'password', False)
-        with self.assertRaises(WSManException) as context:
-            service.invoke('headers', 'body')
-        self.assertRegexpMatches(str(context.exception), 'the remote host returned an unexpected http status code.*')
+        self.assertRaisesWithMessage('the remote host returned an unexpected http status code.*',
+                                     service.invoke, 'headers', 'body')
 
     response = Response()
 
