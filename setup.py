@@ -27,7 +27,7 @@ setup(
     keywords='winrm winrw ws-man ws-management powershell'.split(' '),
     author='Ian Clegg',
     author_email='ian.clegg@sourcewarp.com',
-    url='http://github.com/iclegg/winrmlib/',
+    url='https://github.com/ianclegg/winrmlib/',
     license='MIT license',
     packages=['winrmlib', 'winrmlib.api'],
     package_data={'winrmlib.api': ['assets/xsd/*.xsd', 'assets/*.wsdl']},
