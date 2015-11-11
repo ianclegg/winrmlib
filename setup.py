@@ -22,7 +22,7 @@ except ImportError:
 requires = [
     "pyopenssl >= 0.14",
     "requests == 2.5.0",
-    "ntlmlib >= 0.69",
+    "ntlmlib >= 0.70",
     "ordereddict",
     "xmltodict"
 ]
