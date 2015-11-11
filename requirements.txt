@@ -1,5 +1,5 @@
-requests
+pyopenssl>=0.14
+requests>=2.5.0
 ordereddict
 xmltodict
-pyopenssl
-ntlmlib
+ntlmlib >=0.68

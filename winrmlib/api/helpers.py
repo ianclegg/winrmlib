@@ -15,13 +15,10 @@ __title__ = 'winrmlib'
 __author__ = 'ian.clegg@sourcewarp.com'
 __license__ = 'Apache 2.0'
 
-# Set default logging handler to avoid "No handler found" warnings.
-import logging
-try:  # Python 2.7+
-    from logging import NullHandler
-except ImportError:
-    class NullHandler(logging.Handler):
-        def emit(self, record):
-            pass
 
-logging.getLogger(__name__).addHandler(NullHandler())
+class AsHex:
+    def __init__(self, s):
+        self.s = s
+
+    def __str__(self):
+        return ":".join([hex(ord(c))[2:].zfill(2) for c in self.s])

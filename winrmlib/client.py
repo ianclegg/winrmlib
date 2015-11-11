@@ -40,11 +40,8 @@ logging_config = dict(
         }
     }
 })
-
-
 dictConfig(logging_config)
 logger = logging.getLogger()
-logger.debug("ok")
 
 from winrmlib.shell import CommandShell
 

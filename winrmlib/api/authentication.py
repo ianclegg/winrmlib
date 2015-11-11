@@ -20,6 +20,7 @@ import logging
 from struct import pack, unpack, calcsize
 from requests.auth import AuthBase
 
+from ntlmlib.helpers import AsHex
 from ntlmlib.context import NtlmContext
 from ntlmlib.structure import Structure
 from ntlmlib.authentication import PasswordAuthentication
@@ -527,23 +528,23 @@ class HttpNtlmAuth(AuthBase):
         return request
 
 
-"""
-"""
 class HttpCredSSPAuth(AuthBase):
+    """
+    """
+
     def __init__(self, domain, username, password):
-        self.domain = domain
-        self.username = username
-        self.password = password
         self.credssp_regex = re.compile('(?:.*,)*\s*CredSSP\s*([^,]*),?', re.I)
+        self.password_authenticator = PasswordAuthentication(domain, username, password)
 
         # Windows 2008 R2 and earlier are unable to negotiate TLS 1.2 by default so use TLS 1.0
-        self.tls_credssp_context = SSL.Context(SSL.TLSv1_METHOD)
-
+        # TODO: provide an mechanism to enable TLS 1.2 which works with modern Windows servers
+        self.tls_context = SSL.Context(SSL.TLSv1_METHOD)
         # OpenSSL introduced a fix to CBC ciphers by adding empty fragments, but this breaks Microsoft's TLS 1.0
         # implementation. OpenSSL added a flag we need to use which ensures OpenSSL does not send empty fragments
         # SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS (0x00000800) | SSL_OP_TLS_BLOCK_PADDING_BUG (0x00000200)
-        self.tls_credssp_context.set_options(0x00000800 | 0x00000200)
-        self.tls_credssp_context.set_cipher_list('ALL')
+        self.tls_context.set_options(0x00000800 | 0x00000200)
+        self.tls_context.set_cipher_list('ALL')
+        self.tls_connection = None
 
     def _get_credssp_header(self, response):
         authenticate_header = response.headers.get('www-authenticate', None)
@@ -580,64 +581,64 @@ class HttpCredSSPAuth(AuthBase):
         ffi.gc(buf[0], openssl_lib.OPENSSL_free)
         return public_key
 
-
-    def _credssp_processor(self):
+    def _credssp_processor(self, context):
         """
         Implements a state machine
         :return:
         """
-        response = (yield)
-        context = self._get_credssp_header(response)
+        http_response = (yield)
+        credssp_context = self._get_credssp_header(http_response)
 
-        if context is None:
+        if credssp_context is None:
             raise Exception('The remote host did not respond with a \'www-authenticate\' header containing '
                             '\'CredSSP\' as an available authentication mechanism')
 
-        # 1. First, secure the channel with a RC4-SHA TLS Handshake
-        if not context:
-            tls_credssp = SSL.Connection(self.tls_credssp_context)
-            tls_credssp.set_connect_state()
+        # 1. First, secure the channel with a TLS Handshake
+        if not credssp_context:
+            self.tls_connection = SSL.Connection(self.tls_context)
+            self.tls_connection.set_connect_state()
             while True:
                 try:
-                    tls_credssp.do_handshake()
+                    self.tls_connection.do_handshake()
                 except SSL.WantReadError:
-                    response = yield self._set_credssp_header(response.request, tls_credssp.bio_read(4096))
-                    context = self._get_credssp_header(response)
-                    if context is None or not context:
+                    http_response = yield self._set_credssp_header(http_response.request, self.tls_connection.bio_read(4096))
+                    credssp_context = self._get_credssp_header(http_response)
+                    if credssp_context is None or not credssp_context:
                         raise Exception('The remote host rejected the CredSSP TLS handshake')
-                    tls_credssp.bio_write(context)
+                    self.tls_connection.bio_write(credssp_context)
                 else:
                     break
 
         # add logging to display the negotiated cipher (move to a function)
         openssl_lib = _util.binding.lib
         ffi = _util.binding.ffi
-        cipher = openssl_lib.SSL_get_current_cipher(tls_credssp._ssl)
+        cipher = openssl_lib.SSL_get_current_cipher(self.tls_connection._ssl)
         cipher_name = ffi.string( openssl_lib.SSL_CIPHER_get_name(cipher))
-        # print cipher_name
+        log.debug("Negotiated TLS Cipher: %s", cipher_name)
 
         # 2. Send an TSRequest containing an NTLM Negotiate Request
-        context = NtlmContext(PasswordAuthentication(self.domain, self.username, self.password), session_security='encrypt')
         context_generator = context.initialize_security_context()
         negotiate_token = context_generator.send(None)
+        log.debug("NTLM Type 1: %s", AsHex(negotiate_token))
 
         ts_request = TSRequest()
         ts_request['negoTokens'] = negotiate_token
-        tls_credssp.send(ts_request.getData())
+        self.tls_connection.send(ts_request.getData())
 
-        http_challenge_response = yield self._set_credssp_header(response.request, tls_credssp.bio_read(4096))
+        http_response = yield self._set_credssp_header(http_response.request, self.tls_connection.bio_read(4096))
 
         # Extract and decrypt the encoded TSRequest response struct from the Negotiate header
-        authenticate_header = self._get_credssp_header(http_challenge_response)
+        authenticate_header = self._get_credssp_header(http_response)
         if not authenticate_header or authenticate_header is None:
             raise Exception("The remote host rejected the CredSSP negotiation token")
-        tls_credssp.bio_write(authenticate_header)
+        self.tls_connection.bio_write(authenticate_header)
 
         # NTLM Challenge Response and Server Public Key Validation
         ts_request = TSRequest()
-        ts_request.fromString(tls_credssp.recv(8192))
+        ts_request.fromString(self.tls_connection.recv(8192))
         challenge_token = ts_request['negoTokens']
-        server_cert = tls_credssp.get_peer_certificate()
+        log.debug("NTLM Type 2: %s", AsHex(challenge_token))
+        server_cert = self.tls_connection.get_peer_certificate()
 
         # not using channel bindings
         #certificate_digest = base64.b16decode(server_cert.digest('SHA256').replace(':', ''))
@@ -649,42 +650,47 @@ class HttpCredSSPAuth(AuthBase):
 
         # Build and encrypt the response to the server
         ts_request = TSRequest()
-        ts_request['negoTokens'] = context_generator.send(challenge_token)
+        type3= context_generator.send(challenge_token)
+        log.debug("NTLM Type 3: %s", AsHex(type3))
+        ts_request['negoTokens'] = type3
         public_key_encrypted, signature = context.wrap_message(public_key)
         ts_request['pubKeyAuth'] = signature + public_key_encrypted
 
-        tls_credssp.send(ts_request.getData())
-        enc_type3 = tls_credssp.bio_read(8192)
-        http_auth_response = yield self._set_credssp_header(response.request, enc_type3)
+        self.tls_connection.send(ts_request.getData())
+        enc_type3 = self.tls_connection.bio_read(8192)
+        http_response = yield self._set_credssp_header(http_response.request, enc_type3)
 
         # TLS decrypt the response, then ASN decode and check the error code
-        auth_response = self._get_credssp_header(http_auth_response)
+        auth_response = self._get_credssp_header(http_response)
         if not auth_response or auth_response is None:
             raise Exception("The remote host rejected the challenge response")
 
-        tls_credssp.bio_write(auth_response)
+        self.tls_connection.bio_write(auth_response)
         ts_request = TSRequest()
-        ts_request.fromString(tls_credssp.recv(8192))
-        # TODO: Validate server cert?
+        ts_request.fromString(self.tls_connection.recv(8192))
+        # TODO: determine how to validate server certificate here
         #a = ts_request['pubKeyAuth']
         # print ":".join("{:02x}".format(ord(c)) for c in a)
 
         # 4. Send the Credentials to be delegated, these are encrypted with both NTLM v2 and then by TLS
         tsp = TSPasswordCreds()
-        tsp['domain'] = self.domain
-        tsp['username'] = self.username
-        tsp['password'] = self.password
+        tsp['domain'] = self.password_authenticator.get_domain()
+        tsp['username'] = self.password_authenticator.get_username()
+        tsp['password'] = self.password_authenticator.get_password()
 
         tsc = TSCredentials()
         tsc['type'] = 1
         tsc['credentials'] = tsp.getData()
 
         ts_request = TSRequest()
-        ts_request['authInfo'] = context.wrap_message(tsc.getData())
+        encrypted, signature = context.wrap_message(tsc.getData())
+        ts_request['authInfo'] = signature + encrypted
 
-        tls_credssp.send(ts_request.getData())
-        final = tls_credssp.bio_read(8192)
-        http_response = yield self._set_credssp_header(response.request, final)
+        self.tls_connection.send(ts_request.getData())
+        token = self.tls_connection.bio_read(8192)
+
+        http_response.request.body = self.body
+        http_response = yield self._set_credssp_header(self._encrypt(http_response.request, self.tls_connection), token)
 
         if http_response.status_code == 401:
             raise Exception('Authentication Failed')
@@ -693,8 +699,47 @@ class HttpCredSSPAuth(AuthBase):
         #if self._get_credssp_header(http_response) is None:
         #        raise Exception('Authentication Failed')
 
+    @staticmethod
+    def _encrypt(request, context):
+        body = '--Encrypted Boundary\r\n'
+        body += '\tContent-Type: application/HTTP-CredSSP-session-encrypted\r\n' 
+        body += '\tOriginalContent: type=application/soap+xml;charset=UTF-8;Length=' + str(len(request.body)) + '\r\n'
+        body += '--Encrypted Boundary\r\n'
+        body += 'Content-Type: application/octet-stream\r\n'
+        # CredSSP uses the initial TLS context for encryption
+        context.send(request.body)
+        body += struct.pack('<i', 16)
+        body += context.bio_read(8192)
+        body += '--Encrypted Boundary--\r\n'
+        request.body = body
+        request.headers['Content-Length'] = str(len(body))
+        request.headers['Content-Type'] = 'multipart/encrypted;'
+        request.headers['Content-Type'] += 'protocol="application/HTTP-CredSSP-session-encrypted";'
+        request.headers['Content-Type'] += 'boundary="Encrypted Boundary"'
+        return request
+
+    @staticmethod
+    def _decrypt(response, context):
+        # TODO: there is some extra validation to sanitise the incoming response here
+        mime_parts = response.content.split('--Encrypted Boundary')
+        length = int(mime_parts[1].split(';Length=')[1].strip())
+        parts = mime_parts[2].split("application/octet-stream")
+        payload = parts[1][2:]
+        # The first 4 bytes of the response indicate the length of the signature. When using CredSSP the signature
+        # is not computed or sent, we simply validate this is 0x10
+        signature_length = struct.unpack('<i', payload[:4])[0]
+        tls_text = payload[4:]
+
+        #if len(tls_text) != length:
+        #    raise Exception("extracted length not equal to expected length")
+
+        context.bio_write(tls_text)
+        plaintext = context.recv(8192)
+        return plaintext
+
     def handle_401(self, response, **kwargs):
-        credssp_processor = self._credssp_processor()
+        self.context = NtlmContext(self.password_authenticator, session_security='encrypt')
+        credssp_processor = self._credssp_processor(self.context)
         next(credssp_processor)
 
         while response.status_code == 401:
@@ -706,28 +751,36 @@ class HttpCredSSPAuth(AuthBase):
 
         return response
 
-    def handle_other(self, response, **kwargs):
-        return response
-
     def handle_response(self, response, **kwargs):
         #if self.pos is not None:
             # Rewind the file position indicator of the body to where
             # it was to resend the request.
         #    response.request.body.seek(self.pos)
-
         if response.status_code == 401:
-            _r = self.handle_401(response, **kwargs)
-            log.debug("handle_response(): returning {0}".format(_r))
-            return _r
-        else:
-            _r = self.handle_other(response, **kwargs)
-            log.debug("handle_response(): returning {0}".format(_r))
-            return _r
+            response = self.handle_401(response, **kwargs)
+            log.debug("handle_response(): returning {0}".format(response))
+            # TODO: check the response header to see if the response is encrypted first
+        if response.status_code == 200:
+            logging.debug("decrypting body")
+            message = self._decrypt(response, self.tls_connection)
+            response._content = message
+        return response
 
     def __call__(self, request):
         request.headers["Connection"] = "Keep-Alive"
-        request.headers["Content-Type"] = "application/soap+xml;charset=UTF-8"
 
-        # do not send the plaintext body until secured
+        # TODO: implement support for unencrypted requests
         request.register_hook('response', self.handle_response)
+
+        # We should not send any content to the target host until we have established a security context through the
+        # 'handle_response' hook, so we stash the original request body and remove it from the current request
+        if self.context is None:
+            self.body = str(request.body)
+            request.body = ""
+            request.headers["Content-Type"] = "application/soap+xml;charset=UTF-8"
+            request.headers['Content-Length'] = 0
+        else:
+            logging.debug("encrypting body")
+            self._encrypt(request, self.tls_connection)
+
         return request
