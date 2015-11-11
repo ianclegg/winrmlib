@@ -19,10 +19,18 @@ try:
 except ImportError:
     long_description = ''
 
+requires = [
+    "pyopenssl >= 0.14",
+    "requests == 2.5.0",
+    "ntlmlib >= 0.69",
+    "ordereddict",
+    "xmltodict"
+]
+
 setup(
     name=project_name,
     version=versioneer.get_version(),
-    description='Python library for Windows Remote Management',
+    description='Python library for Windows Remote Management with CredSSP and NTLMv2',
     long_description=long_description,
     keywords='winrm winrw ws-man ws-management powershell'.split(' '),
     author='Ian Clegg',
@@ -31,6 +39,7 @@ setup(
     license='MIT license',
     packages=['winrmlib', 'winrmlib.api'],
     package_data={'winrmlib.api': ['assets/xsd/*.xsd', 'assets/*.wsdl']},
+    install_requires=requires,
     cmdclass=versioneer.get_cmdclass(),
     classifiers=[
         'Development Status :: 3 - Alpha',
